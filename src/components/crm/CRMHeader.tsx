@@ -14,13 +14,15 @@ export function CRMHeader({ onLogout, userName = 'Admin User', userRole = 'Admin
   return (
     <header className="h-16 bg-[#0f1623] border-b border-[#1a2332] flex items-center justify-between px-6">
       <div className="flex-1 max-w-md flex items-center gap-4">
-        <Link
-          to="/"
+        <a
+          href="https://fourd.com.au"
+          target="_blank"
+          rel="noopener noreferrer"
           className="text-sm text-gray-400 hover:text-[#00ff88] transition-colors flex items-center gap-2"
         >
           <ExternalLink className="w-4 h-4" />
           View Website
-        </Link>
+        </a>
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
           <input

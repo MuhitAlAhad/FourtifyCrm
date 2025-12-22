@@ -44,22 +44,12 @@ export function CRMLoginPage({ onLogin, onNavigateToRegister }: CRMLoginPageProp
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0f1a] via-[#0f1623] to-[#1a2332] flex items-center justify-center p-4">
-      {/* Back to Website Button */}
-      <Link
-        to="/"
-        className="absolute top-6 left-6 flex items-center gap-2 text-gray-400 hover:text-[#00ff88] transition-colors"
-      >
-        <ArrowLeft className="w-5 h-5" />
-        <span>Back to Website</span>
-      </Link>
-
       <div className="w-full max-w-md">
         {/* Logo & Title */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <img src={logo} alt="Fourtify CRM" className="h-16" />
           </div>
-          <h1 className="text-3xl text-white mb-2">Fourtify CRM</h1>
           <p className="text-gray-400">Admin Portal Access</p>
         </div>
 
@@ -108,8 +98,8 @@ export function CRMLoginPage({ onLogin, onNavigateToRegister }: CRMLoginPageProp
               type="submit"
               disabled={loading}
               className={`w-full py-3 rounded-lg transition-all font-semibold ${loading
-                  ? 'bg-gray-600 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-[#00ff88] to-[#00cc6a] text-[#0a0f1a] hover:shadow-lg hover:shadow-[#00ff88]/20'
+                ? 'bg-gray-600 cursor-not-allowed'
+                : 'bg-gradient-to-r from-[#00ff88] to-[#00cc6a] text-[#0a0f1a] hover:shadow-lg hover:shadow-[#00ff88]/20'
                 }`}
             >
               {loading ? 'Signing in...' : 'Access CRM Portal'}
