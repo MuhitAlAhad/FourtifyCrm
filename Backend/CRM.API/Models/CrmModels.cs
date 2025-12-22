@@ -53,6 +53,9 @@ public class Organisation
     [Column("deed_end_date")]
     public string DeedEndDate { get; set; } = string.Empty;
     
+    [Column("status")]
+    public string Status { get; set; } = "prospect"; // prospect, active, partner, inactive
+    
     [Column("created_by")]
     public string CreatedBy { get; set; } = string.Empty;
     
@@ -723,6 +726,51 @@ public class Meeting
     [ForeignKey("LeadId")]
     public Lead? Lead { get; set; }
     
+    [ForeignKey("OrganisationId")]
+    public Organisation? Organisation { get; set; }
+}
+
+// Client - paying customers linked to Organisations
+[Table("clients")]
+public class Client
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = $"client:{Guid.NewGuid()}";
+    
+    [Required]
+    [Column("organisation_id")]
+    public string OrganisationId { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("plan")]
+    public string Plan { get; set; } = "Professional"; // Professional, Enterprise, Custom
+    
+    [Column("status")]
+    public string Status { get; set; } = "active"; // active, onboarding, churned
+    
+    [Column("mrr")]
+    public decimal Mrr { get; set; } = 0; // Monthly Recurring Revenue
+    
+    [Column("contract_start")]
+    public DateTime? ContractStart { get; set; }
+    
+    [Column("contract_end")]
+    public DateTime? ContractEnd { get; set; }
+    
+    [Column("disp_compliant")]
+    public bool DispCompliant { get; set; } = false;
+    
+    [Column("notes")]
+    public string Notes { get; set; } = string.Empty;
+    
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation property
     [ForeignKey("OrganisationId")]
     public Organisation? Organisation { get; set; }
 }

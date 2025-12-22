@@ -32,6 +32,7 @@ export interface Organisation {
     industry: string;
     size: string;
     notes: string;
+    status: string;
     createdBy: string;
     createdAt: string;
     updatedAt?: string;
@@ -411,6 +412,62 @@ export const meetingsApi = {
         apiFetch<Meeting>(`/meetings/${id}/cancel`, { method: 'PUT' }),
 };
 
+// Client types and API
+export interface Client {
+    id: string;
+    organisationId: string;
+    organisationName?: string;
+    plan: string;
+    status: 'active' | 'onboarding' | 'churned';
+    mrr: number;
+    contractStart?: string;
+    contractEnd?: string;
+    dispCompliant: boolean;
+    notes?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateClientRequest {
+    organisationId: string;
+    plan?: string;
+    status?: string;
+    mrr?: number;
+    contractStart?: string;
+    contractEnd?: string;
+    dispCompliant?: boolean;
+    notes?: string;
+}
+
+export const clientApi = {
+    getAll: (status?: string) =>
+        apiFetch<{ clients: Client[] }>(`/clients${status ? `?status=${status}` : ''}`),
+    getById: (id: string) =>
+        apiFetch<Client>(`/clients/${id}`),
+    create: (data: CreateClientRequest) =>
+        apiFetch<Client>('/clients', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+    update: (id: string, data: Partial<CreateClientRequest>) =>
+        apiFetch<Client>(`/clients/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+    delete: (id: string) =>
+        apiFetch<void>(`/clients/${id}`, { method: 'DELETE' }),
+    getStats: () =>
+        apiFetch<{
+            totalClients: number;
+            activeClients: number;
+            onboarding: number;
+            churned: number;
+            totalMrr: number;
+            dispCompliantCount: number;
+            dispComplianceRate: number;
+        }>('/clients/stats'),
+};
+
 export default {
     organisations: organisationApi,
     contacts: contactApi,
@@ -421,4 +478,5 @@ export default {
     auth: authApi,
     admin: adminApi,
     meetings: meetingsApi,
+    clients: clientApi,
 };

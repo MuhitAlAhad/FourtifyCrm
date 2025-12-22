@@ -25,6 +25,7 @@ public class CrmDbContext : DbContext
     public DbSet<EmailTemplate> EmailTemplates { get; set; }
     public DbSet<EmailCampaign> EmailCampaigns { get; set; }
     public DbSet<Meeting> Meetings { get; set; }
+    public DbSet<Client> Clients { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

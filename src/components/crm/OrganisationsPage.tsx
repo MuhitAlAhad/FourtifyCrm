@@ -66,6 +66,16 @@ export function OrganisationsPage() {
 
   const getOrgContacts = (orgId: string) => contacts.filter(c => c.organisationId === orgId);
 
+  const getStatusStyle = (status: string) => {
+    const styles: Record<string, { backgroundColor: string; color: string }> = {
+      prospect: { backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#facc15' },
+      active: { backgroundColor: 'rgba(0, 255, 136, 0.2)', color: '#00ff88' },
+      partner: { backgroundColor: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa' },
+      inactive: { backgroundColor: 'rgba(107, 114, 128, 0.2)', color: '#9ca3af' },
+    };
+    return styles[status] || styles.prospect;
+  };
+
   const filteredOrgs = organisations.filter(org =>
     org.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     org.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -135,6 +145,7 @@ export function OrganisationsPage() {
               <th style={{ padding: '16px 24px', textAlign: 'left', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Organisation</th>
               <th style={{ padding: '16px 24px', textAlign: 'left', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>ABN</th>
               <th style={{ padding: '16px 24px', textAlign: 'left', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>State</th>
+              <th style={{ padding: '16px 24px', textAlign: 'center', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Status</th>
               <th style={{ padding: '16px 24px', textAlign: 'center', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Contacts</th>
               <th style={{ padding: '16px 24px', textAlign: 'center', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Actions</th>
             </tr>
@@ -143,7 +154,7 @@ export function OrganisationsPage() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  <td colSpan={5} style={{ padding: '20px 24px' }}>
+                  <td colSpan={6} style={{ padding: '20px 24px' }}>
                     <div style={{ height: '40px', backgroundColor: '#1a2332', borderRadius: '8px' }}></div>
                   </td>
                 </tr>
@@ -164,6 +175,11 @@ export function OrganisationsPage() {
                   </td>
                   <td style={{ padding: '20px 24px', color: '#d1d5db', fontSize: '16px', fontFamily: 'monospace' }}>{org.abn || '—'}</td>
                   <td style={{ padding: '20px 24px', color: '#d1d5db', fontSize: '16px' }}>{org.state || '—'}</td>
+                  <td style={{ padding: '20px 24px', textAlign: 'center' }}>
+                    <span style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '14px', textTransform: 'capitalize', ...getStatusStyle(org.status || 'prospect') }}>
+                      {org.status || 'prospect'}
+                    </span>
+                  </td>
                   <td style={{ padding: '20px 24px', textAlign: 'center' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', borderRadius: '20px', fontSize: '16px' }}>
                       <Users size={20} /> {getOrgContacts(org.id).length}
@@ -242,7 +258,7 @@ export function OrganisationsPage() {
 }
 
 function AddOrganisationModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data: Partial<Organisation>) => void }) {
-  const [formData, setFormData] = useState({ name: '', phone: '', email: '', address: '', website: '', industry: '', size: '', state: '', postcode: '', abn: '', notes: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', email: '', address: '', website: '', industry: '', size: '', state: '', postcode: '', abn: '', notes: '', status: 'prospect' });
 
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onAdd(formData); };
 

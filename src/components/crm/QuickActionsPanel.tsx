@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserPlus, Users, Building2, Mail, Calendar } from 'lucide-react';
+import { UserPlus, Users, Building2, Mail, Calendar, BarChart3 } from 'lucide-react';
 
 interface QuickActionsPanelProps {
   onAction: (action: string) => void;
@@ -41,6 +41,13 @@ export function QuickActionsPanel({ onAction }: QuickActionsPanelProps) {
       icon: Calendar,
       color: 'from-pink-500 to-pink-600',
       description: 'Book appointment',
+    },
+    {
+      id: 'generate-report',
+      label: 'Generate Report',
+      icon: BarChart3,
+      color: 'from-cyan-500 to-cyan-600',
+      description: 'Coming soon',
     },
   ];
 
