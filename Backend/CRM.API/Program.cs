@@ -24,7 +24,15 @@ builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.
 builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 
 // Configure PostgreSQL with Supabase
-var connectionString = builder.Configuration.GetConnectionString("SupabaseConnection");
+// Render uses DATABASE_URL env var, local dev uses appsettings
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
+    ?? builder.Configuration.GetConnectionString("SupabaseConnection");
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new InvalidOperationException("Database connection string not found. Set DATABASE_URL environment variable or configure ConnectionStrings:SupabaseConnection in appsettings.");
+}
+
 builder.Services.AddDbContext<CrmDbContext>(options =>
     options.UseNpgsql(connectionString));
 
@@ -36,11 +44,13 @@ builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 
 // Register Resend email service
+var resendApiKey = Environment.GetEnvironmentVariable("RESEND_API_KEY") 
+    ?? builder.Configuration["Resend:ApiKey"] ?? "";
 builder.Services.AddOptions();
 builder.Services.AddHttpClient<Resend.ResendClient>();
 builder.Services.Configure<Resend.ResendClientOptions>(o =>
 {
-    o.ApiToken = builder.Configuration["Resend:ApiKey"]!;
+    o.ApiToken = resendApiKey;
 });
 builder.Services.AddTransient<Resend.IResend, Resend.ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
