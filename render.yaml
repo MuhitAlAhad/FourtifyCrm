@@ -1,0 +1,17 @@
+# Backend Deployment Configuration
+services:
+  - type: web
+    name: fourtify-crm-api
+    runtime: docker
+    dockerfilePath: ./Backend/CRM.API/Dockerfile
+    dockerContext: ./Backend/CRM.API
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render dashboard
+      - key: RESEND_API_KEY
+        sync: false
+      - key: JWT_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://crm.fourd.com.au
+    healthCheckPath: /api/stats/dashboard

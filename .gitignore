@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Misc
+*.local
+
+# .NET Backend
+Backend/CRM.API/bin/
+Backend/CRM.API/obj/
+Backend/CRM.API/*.user
+Backend/CRM.API/*.suo
+Backend/CRM.API/.vs/
+*.pdb
+
+# Database files (local SQLite if used)
+*.db
+*.sqlite
+
+# Secrets (never commit)
+appsettings.Development.json
+appsettings.Production.json
+
+# Package lock files (optional - uncomment if you want to ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Build log from earlier debugging
+build.log
