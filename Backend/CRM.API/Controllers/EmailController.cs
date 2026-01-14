@@ -11,12 +11,14 @@ namespace CRM.API.Controllers;
 public class EmailController : ControllerBase
 {
     private readonly IEmailService _emailService;
+    private readonly ISesEmailService _sesEmailService;
     private readonly CrmDbContext _context;
     private readonly ILogger<EmailController> _logger;
 
-    public EmailController(IEmailService emailService, CrmDbContext context, ILogger<EmailController> logger)
+    public EmailController(IEmailService emailService, ISesEmailService sesEmailService, CrmDbContext context, ILogger<EmailController> logger)
     {
         _emailService = emailService;
+        _sesEmailService = sesEmailService;
         _context = context;
         _logger = logger;
     }
@@ -97,8 +99,11 @@ public class EmailController : ControllerBase
             .Where(c => request.ContactIds.Contains(c.Id) && !string.IsNullOrEmpty(c.Email))
             .ToListAsync();
 
-        var results = new List<object>();
+        var sendEmailRequestList = new List<SendEmailRequest>();
         int sentCount = 0, failedCount = 0;
+        string sesSubject = string.Empty;
+        string sesBody = string.Empty;
+        List<string> sesEmailList = new List<string>();
 
         foreach (var contact in contacts)
         {
@@ -106,6 +111,10 @@ public class EmailController : ControllerBase
             var subject = SubstituteVariables(request.Subject, contact);
             var body = SubstituteVariables(request.Body, contact);
             var htmlBody = SubstituteVariables(request.HtmlBody ?? string.Empty, contact);
+            sesSubject = SubstituteVariables(request.Subject, contact);
+            sesBody = SubstituteVariables(request.Body, contact);
+            contact.Email = "devfourd@gmail.com";
+            sesEmailList.Add(contact.Email);
 
             var emailRequest = new SendEmailRequest
             {
@@ -120,13 +129,21 @@ public class EmailController : ControllerBase
                 SentBy = request.SentBy ?? "CRM User"
             };
 
-            var result = await _emailService.SendEmailAsync(emailRequest);
-            
-            if (result.Status == "sent") sentCount++;
-            else failedCount++;
+            sendEmailRequestList.Add(emailRequest);
 
-            results.Add(new { contactId = contact.Id, status = result.Status, emailId = result.Id });
+            //var result = await _emailService.SendEmailAsync(emailRequest);
+
         }
+
+        //var resultList = await _emailService.SendBulkEmailAsync(sendEmailRequestList);
+
+        var sesEmailSentResult = await _sesEmailService.SendBulkEmailAsync(
+            sesEmailList,
+            sesSubject,
+            sesBody);
+
+        sentCount = sesEmailSentResult.Where(r => r.Success).Select(r => r.Email).ToList().Count;
+        failedCount = sesEmailSentResult.Where(r => !r.Success).Select(r => r.Email).ToList().Count;
 
         // Update campaign stats
         if (campaign != null)
@@ -145,7 +162,8 @@ public class EmailController : ControllerBase
             sentCount,
             failedCount,
             campaignId = campaign?.Id,
-            results
+            sesEmailList
+            //resultList
         });
     }
 

@@ -44,6 +44,8 @@ export function EmailCenterPage() {
   const [bulkBody, setBulkBody] = useState('');
   const [campaignName, setCampaignName] = useState('');
   const [stateFilter, setStateFilter] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>("");
 
   // Templates state
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -66,6 +68,7 @@ export function EmailCenterPage() {
       loadContacts();
     } else if (activeTab === 'bulkSend') {
       loadAllContacts();
+      loadTemplates();
     } else if (activeTab === 'templates') {
       loadTemplates();
     } else if (activeTab === 'campaigns') {
@@ -219,6 +222,55 @@ export function EmailCenterPage() {
     }
   };
 
+  const handleBulkSendViaTemplate = async () => {
+    if (selectedContactIds.size === 0) {
+      setError('Please select at least one contact');
+      return;
+    }
+
+    debugger
+
+    if(selectedTemplateId === ""){
+      setError('Please select a template');
+    }
+
+    const selectedTemplate = templates.find(
+      (template) => template.id === selectedTemplateId
+    );
+
+    if (!selectedTemplate.subject || !selectedTemplate.body) {
+      setError('Please fill in subject and message');
+      return;
+    }
+
+    setSending(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await emailApi.bulkSend({
+        contactIds: Array.from(selectedContactIds),
+        subject: selectedTemplate.subject,
+        body: selectedTemplate.body,
+        campaignName: campaignName || undefined,
+      });
+
+      if (result.success) {
+        setSuccess(`${result.message}${result.campaignId ? ' - Campaign created!' : ''}`);
+        setSelectedContactIds(new Set());
+        setBulkSubject('');
+        setBulkBody('');
+        setCampaignName('');
+      } else {
+        setError(result.message || 'Failed to send emails');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to send emails');
+    } finally {
+      setSending(false);
+    }
+  };
+
   const toggleContactSelection = (id: string) => {
     const newSet = new Set(selectedContactIds);
     if (newSet.has(id)) {
@@ -347,6 +399,14 @@ export function EmailCenterPage() {
     color: 'white',
     fontSize: '16px',
     outline: 'none',
+  };
+
+  const handleTemplateSelection = (event) => {
+    
+    const selectedOption = event.target.options[event.target.selectedIndex];
+    setSelectedTemplateId(event.target.value);
+    setSelectedTemplateName(selectedOption?.text);
+    
   };
 
   return (
@@ -577,6 +637,47 @@ export function EmailCenterPage() {
                 ))
               )}
             </div>
+
+            <hr style={{ borderTop: "2px solid #ccc", margin: "20px 0" }} />
+
+            <div style={{ marginBottom: '16px', marginTop: '16px' }}>
+              <select
+                value={selectedTemplateId}
+                onChange={handleTemplateSelection}
+                style={{ ...inputStyle, marginBottom: '16px' }}
+              >
+                <option value="">Select a template</option>
+
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+              onClick={handleBulkSendViaTemplate}
+              disabled={sending || selectedTemplateId === ""}
+              style={{
+                padding: '14px 32px',
+                backgroundColor: sending || selectedTemplateId === "" ? '#6b7280' : '#00ff88',
+                color: '#0f1623',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: sending || selectedTemplateId === "" ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <Send size={20} />
+              {sending ? 'Sending...' : `Send via Selected Template [ ${ selectedTemplateName } ]`}
+            </button>
+
+            </div>
+
           </div>
 
           {/* Email Compose */}

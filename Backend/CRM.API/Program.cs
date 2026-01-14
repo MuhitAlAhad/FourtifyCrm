@@ -6,6 +6,10 @@ using CRM.API.Data;
 using CRM.API.Services;
 using Microsoft.AspNetCore.ResponseCompression;
 using System.IO.Compression;
+using Amazon.SimpleEmailV2;
+using Amazon.SimpleNotificationService;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +58,35 @@ builder.Services.Configure<Resend.ResendClientOptions>(o =>
 });
 builder.Services.AddTransient<Resend.IResend, Resend.ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// Bind SES settings
+builder.Services.Configure<SesSettings>(
+    builder.Configuration.GetSection("SesSettings"));
+
+// Register email service
+builder.Services.AddScoped<ISesEmailService, SesEmailService>();
+
+// AWS
+//builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
+//builder.Services.AddAWSService<IAmazonSimpleEmailService>();
+
+// ASW SES2
+//builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
+//builder.Services.AddAWSService<IAmazonSimpleEmailServiceV2>();
+//builder.Services.AddAWSService<IAmazonSimpleNotificationService>();
+
+// Hangfire
+//builder.Services.AddHangfire(config =>
+//    config.UsePostgreSqlStorage(
+//        builder.Configuration.GetConnectionString(connectionString),
+//        new PostgreSqlStorageOptions
+//        {
+//            SchemaName = "hangfire"
+//        }
+//    )
+//);
+
+//builder.Services.AddHangfireServer();
 
 // Configure CORS for frontend (supports both dev and production)
 var frontendUrl = builder.Configuration["FRONTEND_URL"] ?? Environment.GetEnvironmentVariable("FRONTEND_URL");
