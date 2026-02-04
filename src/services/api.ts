@@ -1,11 +1,7 @@
 // CRM API Configuration and Service
 // Replace the mock data imports in your components with these API calls
 
-const isLocalhost = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
-const DEFAULT_API_BASE_URL = isLocalhost
-    ? 'http://localhost:5122/api'
-    : `${window.location.origin}/api`;
-const API_BASE_URL = import.meta.env.VITE_API_URL || DEFAULT_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5122/api';
 const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_URL || API_BASE_URL;
 
 // Helper function for API calls
@@ -296,6 +292,7 @@ export interface AuthUser {
     name: string;
     role: string;
     status: string;
+    signatureHtml?: string;
 }
 
 export interface AuthResponse {
@@ -338,6 +335,15 @@ export const authApi = {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`,
             },
+        }).then(r => r.json()) as Promise<AuthResponse>,
+    updateProfile: (data: Partial<AuthUser>) =>
+        fetch(`${API_BASE_URL}/auth/profile`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            },
+            body: JSON.stringify(data),
         }).then(r => r.json()) as Promise<AuthResponse>,
 };
 
