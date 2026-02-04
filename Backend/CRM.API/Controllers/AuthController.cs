@@ -60,6 +60,7 @@ public class AuthController : ControllerBase
         public string Name { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
+        public string? SignatureHtml { get; set; }
     }
 
     /// <summary>
@@ -278,7 +279,8 @@ public class AuthController : ControllerBase
                     Email = user.Email,
                     Name = user.Name,
                     Role = user.Role,
-                    Status = user.Status
+                    Status = user.Status,
+                    SignatureHtml = user.SignatureHtml
                 }
             });
         }
@@ -319,7 +321,8 @@ public class AuthController : ControllerBase
                     Email = user.Email,
                     Name = user.Name,
                     Role = user.Role,
-                    Status = user.Status
+                    Status = user.Status,
+                    SignatureHtml = user.SignatureHtml
                 }
             });
         }
@@ -327,6 +330,57 @@ public class AuthController : ControllerBase
         {
             _logger.LogError(ex, "Failed to get current user");
             return StatusCode(500, new AuthResponse { Success = false, Message = "Failed to retrieve user" });
+        }
+    }
+
+    /// <summary>
+    /// Update user profile (name and signature)
+    /// </summary>
+    [HttpPut("profile")]
+    public async Task<ActionResult<AuthResponse>> UpdateProfile([FromBody] UserDto request)
+    {
+        try
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId) || userId != request.Id)
+            {
+                return Unauthorized(new AuthResponse { Success = false, Message = "Not authenticated or unauthorized" });
+            }
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return NotFound(new AuthResponse { Success = false, Message = "User not found" });
+            }
+
+            // Update allowed fields
+            if (!string.IsNullOrWhiteSpace(request.Name))
+            {
+                user.Name = request.Name.Trim();
+            }
+            user.SignatureHtml = request.SignatureHtml;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new AuthResponse
+            {
+                Success = true,
+                Message = "Profile updated successfully",
+                User = new UserDto
+                {
+                    Id = user.Id,
+                    Email = user.Email,
+                    Name = user.Name,
+                    Role = user.Role,
+                    Status = user.Status,
+                    SignatureHtml = user.SignatureHtml
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update profile for user {UserId}", request.Id);
+            return StatusCode(500, new AuthResponse { Success = false, Message = "Failed to update profile" });
         }
     }
 
