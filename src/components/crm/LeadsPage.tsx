@@ -32,17 +32,29 @@ export function LeadsPage() {
     try {
       setLoading(true);
       setError(null);
+      
       const { leads: apiLeads } = await leadApi.getAll();
       const formattedLeads: Lead[] = apiLeads.map(lead => ({
-        id: lead.id,
-        name: lead.name,
-        company: lead.organisationId || 'N/A',
-        email: `contact@${lead.name.toLowerCase().replace(/\s+/g, '')}.com`,
-        phone: '+61 400 000 000',
-        status: mapStageToStatus(lead.stage),
-        source: lead.source,
-        supplierName: lead.owner || '',
-        createdAt: new Date(lead.createdAt).toLocaleDateString(),
+
+
+      id: lead.id ?? lead.leadId ?? `lead-${Math.random()}`,
+      name: lead.name ?? 'Unnamed Lead',
+      company: lead.organisationId ?? lead.organisationName ?? 'N/A',
+
+      email: lead.email ?? (
+      lead.name
+        ? `${lead.name.toLowerCase().replace(/\s+/g, '')}@example.com`
+        : 'no-email@example.com'
+      ),
+
+phone: lead.phone ?? '+61 000 000 000',
+
+status: mapStageToStatus(lead.stage ?? 'new'),
+source: lead.source ?? '',
+supplierName: lead.supplierName ?? lead.owner ?? '',
+
+createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+
       }));
       setLeads(formattedLeads);
     } catch (err) {
@@ -68,6 +80,8 @@ export function LeadsPage() {
         owner: leadData.supplierName || '',
         stage: 'New Lead',
       });
+         
+      alert('Lead created successfully'); // quick confirm (temporary)
       await loadLeads();
       setShowAddModal(false);
     } catch (err) {

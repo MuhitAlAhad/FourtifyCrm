@@ -6,7 +6,7 @@ namespace CRM.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class LeadsController : ControllerBase
+public class LeadsController : ControllerBase, ILeadsController
 {
     private readonly ILeadService _service;
 

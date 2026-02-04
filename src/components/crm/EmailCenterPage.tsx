@@ -727,7 +727,7 @@ export function EmailCenterPage() {
       return;
     }
 
-    if (hasUnhostedImages(bodyHtml)) {
+    if (pendingUploads > 0) {
       setError('Please wait for image upload to finish before sending.');
       return;
     }
@@ -739,10 +739,20 @@ export function EmailCenterPage() {
     try {
       const selectedSignature = signatures.find(s => s.id === selectedSignatureId);
       const baseBodyHtml = stripLrmFromHtml(bodyHtml || textToHtml(body));
-      const hostedBodyHtml = await ensureHostedImagesInHtml(baseBodyHtml);
-      const signatureHtml = includeSignature && selectedSignature?.html
-        ? await ensureHostedImagesInHtml(normalizeSignatureHtml(selectedSignature.html))
-        : '';
+      let hostedBodyHtml = baseBodyHtml;
+      try {
+        hostedBodyHtml = await ensureHostedImagesInHtml(baseBodyHtml);
+      } catch (err) {
+        throw new Error('Image upload failed. Please try again.');
+      }
+      let signatureHtml = '';
+      if (includeSignature && selectedSignature?.html) {
+        try {
+          signatureHtml = await ensureHostedImagesInHtml(normalizeSignatureHtml(selectedSignature.html));
+        } catch (err) {
+          throw new Error('Signature image upload failed. Please try again.');
+        }
+      }
       const signatureHtmlBlock = signatureHtml ? `<br/><br/>${signatureHtml}` : '';
       const composedHtml = `${hostedBodyHtml}${signatureHtmlBlock}`;
       const finalHtml = buildHtmlBody(composedHtml, composeAttachments);

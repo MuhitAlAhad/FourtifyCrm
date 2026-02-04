@@ -21,12 +21,17 @@ public class LeadService : ILeadService
         {
             query = query.Where(l => l.Stage == stage);
         }
-        
+
         return await query
-            .Include(l => l.Organisation)
-            .Include(l => l.Contact)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
+
+        
+      //  return await query
+        //    .Include(l => l.Organisation)
+         //   .Include(l => l.Contact)
+         //   .OrderByDescending(l => l.CreatedAt)
+         //   .ToListAsync();
     }
 
     public async Task<Lead?> GetByIdAsync(string id)

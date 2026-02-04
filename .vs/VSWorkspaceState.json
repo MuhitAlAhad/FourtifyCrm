@@ -1,0 +1,11 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\Backend",
+    "\\Backend\\CRM.API",
+    "\\Backend\\CRM.API\\Controllers",
+    "\\Backend\\CRM.API\\Services"
+  ],
+  "SelectedNode": "\\Backend\\CRM.API\\Controllers\\ContactsController.cs",
+  "PreviewInSolutionExplorer": false
+}

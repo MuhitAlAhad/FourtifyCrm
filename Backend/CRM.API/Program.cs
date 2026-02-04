@@ -10,11 +10,20 @@ using Amazon.SimpleEmailV2;
 using Amazon.SimpleNotificationService;
 using Hangfire;
 using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Trust proxy headers (Render/ingress) so Request.Scheme and Host are correct
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // Enable response compression (GZIP + Brotli)
 builder.Services.AddResponseCompression(options =>
@@ -147,6 +156,9 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// Respect X-Forwarded-* headers from reverse proxies
+app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -157,7 +169,22 @@ if (app.Environment.IsDevelopment())
 // Use response compression EARLY in the pipeline
 app.UseResponseCompression();
 
-app.UseStaticFiles();
+// Allow CORS for static uploads (images)
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        if (ctx.Context.Request.Path.StartsWithSegments("/uploads"))
+        {
+            var origin = ctx.Context.Request.Headers["Origin"].ToString();
+            if (!string.IsNullOrWhiteSpace(origin) && allowedOrigins.Contains(origin))
+            {
+                ctx.Context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+                ctx.Context.Response.Headers["Vary"] = "Origin";
+            }
+        }
+    }
+});
 
 // Use CORS before other middleware
 app.UseCors("AllowFrontend");
