@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Mail, Clock, CheckCircle, AlertCircle, Search, RefreshCw, User, Building2, X, FileText, Users, BarChart3, Plus, Trash2, Edit, Bold, Italic, Underline, List, ListOrdered, Link, Image, AlignLeft, AlignCenter, AlignRight, Type } from 'lucide-react';
+import { Send, Mail, Clock, CheckCircle, AlertCircle, Search, RefreshCw, User, Building2, X, FileText, Users, BarChart3, Plus, Trash2, Edit } from 'lucide-react';
 import { emailApi, templateApi, mediaApi, SentEmail, EmailContact, EmailTemplate } from '../../services/api';
 
 type Tab = 'compose' | 'bulkSend' | 'templates' | 'campaigns' | 'history';
@@ -27,185 +27,6 @@ interface Campaign {
   clickRate: number;
   createdAt: string;
   sentAt?: string;
-}
-
-// Rich Text Editor Toolbar Component
-interface RichTextToolbarProps {
-  editorRef: React.RefObject<HTMLDivElement | null>;
-  onContentChange: (html: string) => void;
-  showImageResize?: boolean;
-}
-
-function RichTextToolbar({ editorRef, onContentChange, showImageResize = true }: RichTextToolbarProps) {
-  const execCommand = (command: string, value?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(command, false, value);
-    setTimeout(() => {
-      if (editorRef.current) {
-        onContentChange(editorRef.current.innerHTML);
-      }
-    }, 0);
-  };
-
-  const insertLink = () => {
-    const url = prompt('Enter URL:');
-    if (url) {
-      execCommand('createLink', url);
-    }
-  };
-
-  const insertImage = () => {
-    const url = prompt('Enter image URL:');
-    if (url) {
-      execCommand('insertImage', url);
-    }
-  };
-
-  const resizeImages = (widthPercent: number, sideBySide = false) => {
-    if (!editorRef.current) return;
-    const images = editorRef.current.querySelectorAll('img');
-    images.forEach(img => {
-      img.style.width = sideBySide ? '48%' : `${widthPercent}%`;
-      img.style.height = 'auto';
-      img.style.display = 'inline-block';
-      img.style.verticalAlign = 'top';
-      img.style.marginRight = sideBySide ? '2%' : '0';
-    });
-    onContentChange(editorRef.current.innerHTML);
-  };
-
-  const btnStyle: React.CSSProperties = {
-    padding: '6px 8px',
-    backgroundColor: 'transparent',
-    color: '#9ca3af',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const btnHoverStyle = { backgroundColor: '#1a2332', color: 'white' };
-
-  return (
-    <div style={{ display: 'flex', gap: '2px', padding: '8px', backgroundColor: '#0b1220', borderRadius: '8px 8px 0 0', borderBottom: '1px solid #1a2332', flexWrap: 'wrap', alignItems: 'center' }}>
-      {/* Text Formatting */}
-      <button type="button" onClick={() => execCommand('bold')} style={btnStyle} title="Bold (Ctrl+B)"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <Bold size={16} />
-      </button>
-      <button type="button" onClick={() => execCommand('italic')} style={btnStyle} title="Italic (Ctrl+I)"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <Italic size={16} />
-      </button>
-      <button type="button" onClick={() => execCommand('underline')} style={btnStyle} title="Underline (Ctrl+U)"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <Underline size={16} />
-      </button>
-
-      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
-
-      {/* Font Size */}
-      <select
-        onChange={(e) => execCommand('fontSize', e.target.value)}
-        style={{ padding: '4px 8px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
-        defaultValue="3"
-        title="Font Size"
-      >
-        <option value="1">Small</option>
-        <option value="3">Normal</option>
-        <option value="5">Large</option>
-        <option value="7">Huge</option>
-      </select>
-
-      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
-
-      {/* Lists */}
-      <button type="button" onClick={() => execCommand('insertUnorderedList')} style={btnStyle} title="Bullet List"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <List size={16} />
-      </button>
-      <button type="button" onClick={() => execCommand('insertOrderedList')} style={btnStyle} title="Numbered List"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <ListOrdered size={16} />
-      </button>
-
-      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
-
-      {/* Alignment */}
-      <button type="button" onClick={() => execCommand('justifyLeft')} style={btnStyle} title="Align Left"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <AlignLeft size={16} />
-      </button>
-      <button type="button" onClick={() => execCommand('justifyCenter')} style={btnStyle} title="Align Center"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <AlignCenter size={16} />
-      </button>
-      <button type="button" onClick={() => execCommand('justifyRight')} style={btnStyle} title="Align Right"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <AlignRight size={16} />
-      </button>
-
-      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
-
-      {/* Link & Image */}
-      <button type="button" onClick={insertLink} style={btnStyle} title="Insert Link"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <Link size={16} />
-      </button>
-      <button type="button" onClick={insertImage} style={btnStyle} title="Insert Image URL"
-        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
-        <Image size={16} />
-      </button>
-
-      {/* Text Color */}
-      <input
-        type="color"
-        onChange={(e) => execCommand('foreColor', e.target.value)}
-        style={{ width: '28px', height: '28px', padding: '0', border: 'none', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'transparent' }}
-        title="Text Color"
-        defaultValue="#ffffff"
-      />
-
-      {/* Image Resize Options */}
-      {showImageResize && (
-        <>
-          <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
-          <span style={{ color: '#6b7280', fontSize: '11px', marginRight: '4px' }}>Img:</span>
-          {[25, 50, 75, 100].map(size => (
-            <button
-              key={size}
-              type="button"
-              onClick={() => resizeImages(size)}
-              style={{ padding: '3px 6px', backgroundColor: '#1a2332', color: '#9ca3af', border: '1px solid #2a3442', borderRadius: '3px', cursor: 'pointer', fontSize: '10px' }}
-              title={`Resize images to ${size}%`}
-            >
-              {size}%
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => resizeImages(48, true)}
-            style={{ padding: '3px 6px', backgroundColor: '#1a2332', color: '#00ff88', border: '1px solid #00ff88', borderRadius: '3px', cursor: 'pointer', fontSize: '10px' }}
-            title="Side by Side"
-          >
-            Side
-          </button>
-        </>
-      )}
-    </div>
-  );
 }
 
 export function EmailCenterPage() {
@@ -241,7 +62,6 @@ export function EmailCenterPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>("");
   const [bulkAttachments, setBulkAttachments] = useState<AttachmentItem[]>([]);
-  const bulkEditorRef = useRef<HTMLDivElement | null>(null);
 
   // Templates state
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -292,22 +112,38 @@ export function EmailCenterPage() {
   }, [activeTab, contactSearch, showContactPicker, stateFilter]);
 
   useEffect(() => {
+    // 1. Check for profile signature from database first
+    const storedUser = localStorage.getItem('auth_user');
+    let profileSignatureHtml = '';
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      profileSignatureHtml = user.signatureHtml || '';
+    }
+
+    // 2. Load other signatures from local storage
     const stored = localStorage.getItem('crm_email_signatures');
+    let loadedSignatures: { id: string; name: string; html: string }[] = [];
+
     if (stored) {
       try {
-        const parsed = JSON.parse(stored) as { id: string; name: string; html: string }[];
-        const cleaned = parsed.map((sig) => {
-          let html = sig.html || '';
-          html = html.replace(/<img[^>]*alt=["']Signature image["'][^>]*>/gi, '');
-          html = html.replace(/<img[^>]*src=["']\s*["'][^>]*>/gi, '');
-          html = html.replace(/<img[^>]*src=["']https?:\/\/(localhost|127\.0\.0\.1)[^"']*["'][^>]*>/gi, '');
-          html = html.replace(/Signature image/gi, '');
-          return { ...sig, html };
-        });
-        setSignatures(cleaned);
+        loadedSignatures = JSON.parse(stored);
       } catch {
-        setSignatures([]);
+        loadedSignatures = [];
       }
+    }
+
+    // 3. If we have a profile signature and it's not in the list, add it
+    if (profileSignatureHtml) {
+      const exists = loadedSignatures.find(s => s.id === 'sig:profile');
+      if (exists) {
+        exists.html = profileSignatureHtml;
+      } else {
+        loadedSignatures.unshift({ id: 'sig:profile', name: 'Profile Signature', html: profileSignatureHtml });
+      }
+    }
+
+    if (loadedSignatures.length > 0) {
+      setSignatures(loadedSignatures);
       return;
     }
 
@@ -517,10 +353,10 @@ export function EmailCenterPage() {
   };
 
   const normalizeSignatureHtml = (html: string) => {
+    if (!html) return '';
+    // Remove empty images but KEEP localhost if it's there (though ensureHosted should have fixed it)
     const withoutBadImages = html
-      .replace(/<img[^>]*src\s*=\s*(["'])\s*(|)\1[^>]*>/gi, '')
-      .replace(/<img[^>]*src=["']https?:\/\/(localhost|127\.0\.0\.1)[^"']*["'][^>]*>/gi, '')
-      .replace(/Signature image/gi, '');
+      .replace(/<img[^>]*src\s*=\s*(["'])\s*(|)\1[^>]*>/gi, '');
     return withoutBadImages.replace(/<img([^>]*?)>/gi, (match, attrs) => {
       if (/style\s*=/.test(attrs)) {
         return `<img${attrs.replace(/style\s*=\s*(["'])(.*?)\1/i, (m, q, s) => {
@@ -727,7 +563,7 @@ export function EmailCenterPage() {
       return;
     }
 
-    if (pendingUploads > 0) {
+    if (hasUnhostedImages(bodyHtml)) {
       setError('Please wait for image upload to finish before sending.');
       return;
     }
@@ -739,20 +575,10 @@ export function EmailCenterPage() {
     try {
       const selectedSignature = signatures.find(s => s.id === selectedSignatureId);
       const baseBodyHtml = stripLrmFromHtml(bodyHtml || textToHtml(body));
-      let hostedBodyHtml = baseBodyHtml;
-      try {
-        hostedBodyHtml = await ensureHostedImagesInHtml(baseBodyHtml);
-      } catch (err) {
-        throw new Error('Image upload failed. Please try again.');
-      }
-      let signatureHtml = '';
-      if (includeSignature && selectedSignature?.html) {
-        try {
-          signatureHtml = await ensureHostedImagesInHtml(normalizeSignatureHtml(selectedSignature.html));
-        } catch (err) {
-          throw new Error('Signature image upload failed. Please try again.');
-        }
-      }
+      const hostedBodyHtml = await ensureHostedImagesInHtml(baseBodyHtml);
+      const signatureHtml = includeSignature && selectedSignature?.html
+        ? await ensureHostedImagesInHtml(normalizeSignatureHtml(selectedSignature.html))
+        : '';
       const signatureHtmlBlock = signatureHtml ? `<br/><br/>${signatureHtml}` : '';
       const composedHtml = `${hostedBodyHtml}${signatureHtmlBlock}`;
       const finalHtml = buildHtmlBody(composedHtml, composeAttachments);
@@ -832,7 +658,7 @@ export function EmailCenterPage() {
       return;
     }
 
-    if(selectedTemplateId === ""){
+    if (selectedTemplateId === "") {
       setError('Please select a template');
       return;
     }
@@ -1023,11 +849,11 @@ export function EmailCenterPage() {
   };
 
   const handleTemplateSelection = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    
+
     const selectedOption = event.target.options[event.target.selectedIndex];
     setSelectedTemplateId(event.target.value);
     setSelectedTemplateName(selectedOption?.text);
-    
+
   };
 
   return (
@@ -1162,15 +988,7 @@ export function EmailCenterPage() {
           {/* Body */}
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Message</label>
-            <RichTextToolbar 
-              editorRef={composeEditorRef} 
-              onContentChange={(html) => {
-                skipComposeSyncRef.current = true;
-                setBodyHtml(html);
-                setBody(stripHtml(html));
-              }}
-            />
-            <div style={{ position: 'relative', border: '1px solid #2a3442', borderTop: 'none', borderRadius: '0 0 8px 8px', backgroundColor: '#1a2332' }}>
+            <div style={{ position: 'relative' }}>
               {stripHtml(bodyHtml || '') === '' && (!composeEditorRef.current || composeEditorRef.current.innerText.replace(/\u200E/g, '').trim().length === 0) && (
                 <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
                   Write your message... (paste images directly)
@@ -1219,8 +1037,10 @@ export function EmailCenterPage() {
                   });
                 }, true)}
                 style={{
+                  ...inputStyle,
                   minHeight: '220px',
-                  padding: '12px 16px',
+                  paddingTop: '12px',
+                  paddingBottom: '12px',
                   overflowY: 'auto',
                   lineHeight: '1.5',
                   direction: 'ltr',
@@ -1407,25 +1227,25 @@ export function EmailCenterPage() {
               </select>
 
               <button
-              onClick={handleBulkSendViaTemplate}
-              disabled={sending || selectedTemplateId === ""}
-              style={{
-                padding: '14px 32px',
-                backgroundColor: sending || selectedTemplateId === "" ? '#6b7280' : '#00ff88',
-                color: '#0f1623',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: sending || selectedTemplateId === "" ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <Send size={20} />
-              {sending ? 'Sending...' : `Send via Selected Template [ ${ selectedTemplateName } ]`}
-            </button>
+                onClick={handleBulkSendViaTemplate}
+                disabled={sending || selectedTemplateId === ""}
+                style={{
+                  padding: '14px 32px',
+                  backgroundColor: sending || selectedTemplateId === "" ? '#6b7280' : '#00ff88',
+                  color: '#0f1623',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  cursor: sending || selectedTemplateId === "" ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Send size={20} />
+                {sending ? 'Sending...' : `Send via Selected Template [ ${selectedTemplateName} ]`}
+              </button>
 
             </div>
 
@@ -1459,47 +1279,27 @@ export function EmailCenterPage() {
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Message</label>
-              <RichTextToolbar 
-                editorRef={bulkEditorRef} 
-                onContentChange={(html) => {
-                  setBulkHtmlBody(html);
-                  setBulkBody(stripHtml(html));
-                }}
+              <textarea
+                value={bulkBody}
+                onChange={(e) => setBulkBody(e.target.value)}
+                placeholder="Hi {{firstName}},&#10;&#10;Write your message here..."
+                rows={10}
+                style={{ ...inputStyle, resize: 'vertical' }}
               />
-              <div style={{ position: 'relative', border: '1px solid #2a3442', borderTop: 'none', borderRadius: '0 0 8px 8px', backgroundColor: '#1a2332' }}>
-                {!bulkHtmlBody && (
-                  <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
-                    Hi {'{{firstName}}'},<br/>Write your message here... (paste images directly)
-                  </div>
-                )}
-                <div
-                  ref={bulkEditorRef}
-                  contentEditable
-                  dir="ltr"
-                  onInput={(e) => {
-                    const html = (e.currentTarget as HTMLDivElement).innerHTML;
-                    setBulkHtmlBody(html);
-                    setBulkBody(stripHtml(html));
-                  }}
-                  onPaste={(e) => handlePasteToEditor(e, bulkEditorRef, (html) => {
-                    setBulkHtmlBody(html);
-                    setBulkBody(stripHtml(html));
-                  })}
-                  style={{
-                    minHeight: '200px',
-                    padding: '12px 16px',
-                    overflowY: 'auto',
-                    lineHeight: '1.5',
-                    direction: 'ltr',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                  dangerouslySetInnerHTML={{ __html: bulkHtmlBody }}
-                />
-              </div>
               <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '8px' }}>
                 Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{email}}'}, {'{{jobTitle}}'}
               </p>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>HTML Message (optional)</label>
+              <textarea
+                value={bulkHtmlBody}
+                onChange={(e) => setBulkHtmlBody(e.target.value)}
+                placeholder="Optional HTML version (use for logos/images)"
+                rows={6}
+                style={{ ...inputStyle, resize: 'vertical' }}
+              />
             </div>
 
             <div style={{ marginBottom: '24px' }}>
@@ -1579,8 +1379,8 @@ export function EmailCenterPage() {
 
           {/* Template Modal */}
           {showTemplateModal && (
-            <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, overflow: 'hidden' }} onClick={(e) => { if (e.target === e.currentTarget) { setShowTemplateModal(false); setEditingTemplate(null); } }}>
-              <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+              <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '600px' }}>
                 <h2 style={{ fontSize: '20px', color: 'white', marginBottom: '24px' }}>{editingTemplate ? 'Edit Template' : 'New Template'}</h2>
 
                 <div style={{ marginBottom: '16px' }}>
@@ -1595,14 +1395,7 @@ export function EmailCenterPage() {
 
                 <div style={{ marginBottom: '24px' }}>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Body</label>
-                  <RichTextToolbar 
-                    editorRef={templateEditorRef} 
-                    onContentChange={(html) => {
-                      setTemplateHtmlBody(html);
-                      setTemplateBody(stripHtml(html));
-                    }}
-                  />
-                  <div style={{ position: 'relative', border: '1px solid #2a3442', borderTop: 'none', borderRadius: '0 0 8px 8px', backgroundColor: '#1a2332' }}>
+                  <div style={{ position: 'relative' }}>
                     {!templateHtmlBody && (!templateEditorRef.current || templateEditorRef.current.innerText.trim().length === 0) && (
                       <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
                         Write your template... (paste images directly)
@@ -1612,15 +1405,6 @@ export function EmailCenterPage() {
                       ref={templateEditorRef}
                       contentEditable
                       dir="ltr"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          document.execCommand('insertLineBreak');
-                          const html = (e.currentTarget as HTMLDivElement).innerHTML;
-                          setTemplateHtmlBody(html);
-                          setTemplateBody(stripHtml(html));
-                        }
-                      }}
                       onInput={(e) => {
                         const html = (e.currentTarget as HTMLDivElement).innerHTML;
                         setTemplateHtmlBody(html);
@@ -1631,17 +1415,16 @@ export function EmailCenterPage() {
                         setTemplateBody(stripHtml(html));
                       })}
                       style={{
+                        ...inputStyle,
                         minHeight: '220px',
-                        maxHeight: '300px',
-                        padding: '12px 16px',
+                        paddingTop: '12px',
+                        paddingBottom: '12px',
                         overflowY: 'auto',
                         lineHeight: '1.5',
                         direction: 'ltr',
                         unicodeBidi: 'embed',
                         textAlign: 'left',
                         writingMode: 'horizontal-tb',
-                        color: 'white',
-                        outline: 'none',
                       }}
                       dangerouslySetInnerHTML={{ __html: templateHtmlBody || textToHtml(templateBody || '') }}
                     />
@@ -1857,13 +1640,6 @@ export function EmailCenterPage() {
                   Uploading images... please wait before saving.
                 </div>
               )}
-              <RichTextToolbar 
-                editorRef={signatureEditorRef} 
-                onContentChange={(html) => {
-                  skipSignatureSyncRef.current = true;
-                  setSignatureHtml(html);
-                }}
-              />
               <div
                 ref={signatureEditorRef}
                 contentEditable
@@ -1884,15 +1660,13 @@ export function EmailCenterPage() {
                   padding: '12px',
                   backgroundColor: '#1a2332',
                   border: '1px solid #2a3442',
-                  borderTop: 'none',
-                  borderRadius: '0 0 8px 8px',
+                  borderRadius: '8px',
                   color: 'white',
                   lineHeight: '1.5',
                   direction: 'ltr',
                   unicodeBidi: 'embed',
                   textAlign: 'left',
                   writingMode: 'horizontal-tb',
-                  outline: 'none',
                 }}
                 suppressContentEditableWarning
               />
@@ -1910,20 +1684,17 @@ export function EmailCenterPage() {
                     setError('Signature name is required');
                     return;
                   }
-                  // Still uploading? Just warn but allow save
-                  if (pendingUploads > 0) {
-                    setError('Images are still uploading. Please wait a moment.');
+                  if (hasUnhostedImages(signatureHtml)) {
+                    setError('Please wait for image upload to finish before saving the signature.');
                     return;
                   }
                   const cleanedSignatureHtml = normalizeSignatureHtml(signatureHtml);
                   let hostedSignatureHtml = cleanedSignatureHtml;
-                  // Try to upload any remaining base64 images
                   try {
                     hostedSignatureHtml = await ensureHostedImagesInHtml(cleanedSignatureHtml);
                   } catch (err) {
-                    // If upload fails, still save with base64 (will show warning)
-                    console.warn('Image upload failed, saving with embedded images:', err);
-                    hostedSignatureHtml = cleanedSignatureHtml;
+                    setError('Failed to upload signature image. Please try again.');
+                    return;
                   }
                   if (editingSignatureId) {
                     setSignatures(prev => prev.map(sig => sig.id === editingSignatureId ? { ...sig, name: signatureName, html: hostedSignatureHtml } : sig));
@@ -1933,8 +1704,6 @@ export function EmailCenterPage() {
                   setSignatureName('');
                   setSignatureHtml('');
                   setEditingSignatureId(null);
-                  setSuccess('Signature saved!');
-                  setTimeout(() => setSuccess(null), 3000);
                 }}
                 style={{ padding: '10px 16px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
               >
