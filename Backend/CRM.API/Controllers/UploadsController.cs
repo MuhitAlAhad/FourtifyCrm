@@ -26,6 +26,46 @@ public class UploadsController : ControllerBase
             return BadRequest(new { message = "No file uploaded." });
         }
 
+        var supabaseUrl = _configuration["Supabase:Url"];
+        var supabaseKey = _configuration["Supabase:ApiKey"];
+
+        if (!string.IsNullOrWhiteSpace(supabaseUrl) && !string.IsNullOrWhiteSpace(supabaseKey))
+        {
+            try
+            {
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                var fileName = $"{Guid.NewGuid()}{ext}";
+                var bucket = "signatures"; // Ensure this bucket exists and is public
+                
+                using var client = _httpClientFactory.CreateClient();
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
+                client.DefaultRequestHeaders.Add("apikey", supabaseKey);
+
+                using var content = new StreamContent(file.OpenReadStream());
+                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+
+                var uploadUrl = $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/public/{bucket}/{fileName}";
+                
+                // Supabase requires a POST to create objects
+                var response = await client.PostAsync($"{supabaseUrl.TrimEnd('/')}/storage/v1/object/{bucket}/{fileName}", content);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    return Ok(new { url = uploadUrl });
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    // Fallback to local if Supabase fails (optional)
+                }
+            }
+            catch (Exception)
+            {
+                // Fallback to local
+            }
+        }
+
+        // --- FALLBACK TO LOCAL STORAGE (Original Logic) ---
         var proxyUrl = _configuration["UploadProxyUrl"]
             ?? Environment.GetEnvironmentVariable("UPLOAD_PROXY_URL");
         if (!string.IsNullOrWhiteSpace(proxyUrl))
@@ -38,18 +78,16 @@ public class UploadsController : ControllerBase
             content.Add(fileContent, "file", file.FileName);
 
             var response = await client.PostAsync(proxyUrl, content);
-            if (!response.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode)
             {
-                return StatusCode((int)response.StatusCode, new { message = "Proxy upload failed." });
+                var json = await response.Content.ReadAsStringAsync();
+                return Content(json, "application/json");
             }
-
-            var json = await response.Content.ReadAsStringAsync();
-            return Content(json, "application/json");
         }
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var extLocal = Path.GetExtension(file.FileName).ToLowerInvariant();
         var allowed = new HashSet<string> { ".png", ".jpg", ".jpeg", ".gif", ".webp" };
-        if (!allowed.Contains(ext))
+        if (!allowed.Contains(extLocal))
         {
             return BadRequest(new { message = "Unsupported file type." });
         }
@@ -63,12 +101,12 @@ public class UploadsController : ControllerBase
         var uploadRoot = Path.Combine(webRoot, "uploads");
         Directory.CreateDirectory(uploadRoot);
 
-        var fileName = $"{Guid.NewGuid()}{ext}";
-        var filePath = Path.Combine(uploadRoot, fileName);
+        var fileNameLocal = $"{Guid.NewGuid()}{extLocal}";
+        var filePathLocal = Path.Combine(uploadRoot, fileNameLocal);
 
-        await using (var stream = System.IO.File.Create(filePath))
+        await using (var streamLocal = System.IO.File.Create(filePathLocal))
         {
-            await file.CopyToAsync(stream);
+            await file.CopyToAsync(streamLocal);
         }
 
         var configuredBaseUrl = _configuration["PublicBaseUrl"]
@@ -76,7 +114,7 @@ public class UploadsController : ControllerBase
         var baseUrl = !string.IsNullOrWhiteSpace(configuredBaseUrl)
             ? configuredBaseUrl.TrimEnd('/')
             : $"{Request.Scheme}://{Request.Host}";
-        var url = $"{baseUrl}/uploads/{fileName}";
+        var url = $"{baseUrl}/uploads/{fileNameLocal}";
 
         return Ok(new { url });
     }
