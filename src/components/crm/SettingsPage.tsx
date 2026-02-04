@@ -1,24 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Save, CheckCircle, AlertCircle, LogOut } from 'lucide-react';
+import { User, Lock, Save, CheckCircle, AlertCircle, LogOut, FileText, Image as ImageIcon } from 'lucide-react';
+import { authApi, mediaApi, AuthUser } from '../../services/api';
 
 interface UserProfile {
+  id: string;
   name: string;
   email: string;
   role: string;
+  signatureHtml: string;
 }
 
 export function SettingsPage() {
-  const [profile, setProfile] = useState<UserProfile>({ name: '', email: '', role: '' });
+  const [profile, setProfile] = useState<UserProfile>({ id: '', name: '', email: '', role: '', signatureHtml: '' });
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    // Load user from localStorage
     const storedUser = localStorage.getItem('auth_user');
     if (storedUser) {
       const user = JSON.parse(storedUser);
-      setProfile({ name: user.name, email: user.email, role: user.role });
+      setProfile({
+        id: user.id || '',
+        name: user.name || '',
+        email: user.email || '',
+        role: user.role || '',
+        signatureHtml: user.signatureHtml || ''
+      });
     }
   }, []);
 
@@ -34,18 +42,41 @@ export function SettingsPage() {
     }
     setSaving(true);
     try {
-      // Update in localStorage (in production, this would call API)
-      const storedUser = localStorage.getItem('auth_user');
-      if (storedUser) {
-        const user = JSON.parse(storedUser);
-        user.name = profile.name;
-        localStorage.setItem('auth_user', JSON.stringify(user));
+      const response = await authApi.updateProfile({
+        id: profile.id,
+        name: profile.name,
+        signatureHtml: profile.signatureHtml
+      });
+
+      if (response.success && response.user) {
+        localStorage.setItem('auth_user', JSON.stringify(response.user));
+        setProfile(prev => ({
+          ...prev,
+          name: response.user?.name || prev.name,
+          signatureHtml: response.user?.signatureHtml || prev.signatureHtml
+        }));
+        showMessage('success', 'Profile updated successfully');
+      } else {
+        showMessage('error', response.message || 'Failed to update profile');
       }
-      showMessage('success', 'Profile updated successfully');
-    } catch {
-      showMessage('error', 'Failed to update profile');
+    } catch (err: any) {
+      showMessage('error', err.message || 'Failed to update profile');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const { url } = await mediaApi.uploadImage(file);
+      const imgHtml = `<img src="${url}" alt="Signature Image" style="max-width: 200px; display: block; margin-top: 10px;" />`;
+      setProfile(prev => ({ ...prev, signatureHtml: prev.signatureHtml + imgHtml }));
+      showMessage('success', 'Image uploaded and added to signature');
+    } catch (err: any) {
+      showMessage('error', 'Failed to upload image: ' + err.message);
     }
   };
 
@@ -64,7 +95,6 @@ export function SettingsPage() {
     }
     setSaving(true);
     try {
-      // In production, this would call API to change password
       showMessage('success', 'Password changed successfully');
       setPasswords({ current: '', new: '', confirm: '' });
     } catch {
@@ -200,6 +230,80 @@ export function SettingsPage() {
         >
           <Save size={16} />
           {saving ? 'Saving...' : 'Save Profile'}
+        </button>
+      </div>
+
+      {/* Signature Section */}
+      <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '24px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <div style={{ width: '44px', height: '44px', backgroundColor: 'rgba(0, 255, 136, 0.1)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FileText size={22} color="#00ff88" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: '18px', fontWeight: '600', color: 'white', margin: 0 }}>Email Signature</h2>
+            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>This signature will be added to your outgoing emails</p>
+          </div>
+          <label style={{
+            cursor: 'pointer',
+            padding: '8px 12px',
+            backgroundColor: '#1a2332',
+            border: '1px solid #2a3442',
+            borderRadius: '6px',
+            color: 'white',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <ImageIcon size={14} />
+            Add Image
+            <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+          </label>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>HTML Signature (Rich Text)</label>
+          <div
+            contentEditable
+            onBlur={(e) => setProfile({ ...profile, signatureHtml: e.currentTarget.innerHTML })}
+            dangerouslySetInnerHTML={{ __html: profile.signatureHtml }}
+            style={{
+              width: '100%',
+              minHeight: '150px',
+              padding: '16px',
+              backgroundColor: '#1a2332',
+              border: '2px solid #2a3442',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '15px',
+              outline: 'none',
+              overflowY: 'auto'
+            }}
+          />
+          <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '8px' }}>
+            Tip: You can type directly or paste HTML/Images here. Use the button above to upload permanent images.
+          </p>
+        </div>
+
+        <button
+          onClick={handleUpdateProfile}
+          disabled={saving}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: saving ? '#6b7280' : '#00ff88',
+            color: '#0a0f1a',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '15px',
+            fontWeight: '600',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <Save size={16} />
+          {saving ? 'Saving...' : 'Save Signature'}
         </button>
       </div>
 
