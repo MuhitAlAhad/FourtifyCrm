@@ -291,6 +291,9 @@ public class User
     [Column("last_login_at")]
     public DateTime? LastLoginAt { get; set; }
     
+    [Column("signature_html")]
+    public string? SignatureHtml { get; set; }
+    
     // Navigation properties
     public ICollection<Activity> Activities { get; set; } = new List<Activity>();
     public ICollection<CrmTask> AssignedTasks { get; set; } = new List<CrmTask>();
