@@ -1,7 +1,11 @@
 // CRM API Configuration and Service
 // Replace the mock data imports in your components with these API calls
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5122/api';
+const isLocalhost = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+const DEFAULT_API_BASE_URL = isLocalhost
+    ? 'http://localhost:5122/api'
+    : `${window.location.origin}/api`;
+const API_BASE_URL = import.meta.env.VITE_API_URL || DEFAULT_API_BASE_URL;
 const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_URL || API_BASE_URL;
 
 // Helper function for API calls
