@@ -137,7 +137,7 @@ export function ClientsPage() {
         </div>
         <button
           onClick={() => { resetForm(); setEditingClient(null); setShowModal(true); }}
-          className="flex items-center gap-2 bg-[#00ff88] text-black px-4 py-2 rounded-lg hover:bg-[#00cc6f] transition-colors"
+          className="flex items-center gap-2 bg-[#00ff88] text-[#0a0f1a] px-4 py-2 rounded-lg hover:bg-[#00cc6a] transition-colors"
         >
           <Plus className="w-5 h-5" />
           Add Client
@@ -371,7 +371,7 @@ export function ClientsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-[#00ff88] text-black rounded-lg hover:bg-[#00cc6f]"
+                  className="flex-1 px-4 py-2 bg-[#00ff88] text-[#0a0f1a] rounded-lg hover:bg-[#00cc6a] transition-colors"
                 >
                   {editingClient ? 'Update' : 'Create'} Client
                 </button>

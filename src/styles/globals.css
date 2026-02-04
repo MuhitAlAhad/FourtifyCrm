@@ -23,6 +23,10 @@
 }
 
 @layer base {
+  html {
+    direction: ltr;
+  }
+
   * {
     @apply border-[#2a2f38];
   }
@@ -30,6 +34,24 @@
   body {
     @apply bg-[#1a1d23] text-[#e2e8f0] antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    direction: ltr;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    direction: ltr !important;
+    unicode-bidi: plaintext !important;
+    text-align: left !important;
+  }
+
+  .editor-ltr,
+  .editor-ltr * {
+    direction: ltr !important;
+    unicode-bidi: bidi-override !important;
+    text-align: left !important;
+    writing-mode: horizontal-tb !important;
   }
 
   h1 {

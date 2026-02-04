@@ -52,6 +52,7 @@ var resendApiKey = Environment.GetEnvironmentVariable("RESEND_API_KEY")
     ?? builder.Configuration["Resend:ApiKey"] ?? "";
 builder.Services.AddOptions();
 builder.Services.AddHttpClient<Resend.ResendClient>();
+builder.Services.AddHttpClient();
 builder.Services.Configure<Resend.ResendClientOptions>(o =>
 {
     o.ApiToken = resendApiKey;
@@ -93,6 +94,8 @@ var frontendUrl = builder.Configuration["FRONTEND_URL"] ?? Environment.GetEnviro
 var allowedOrigins = new List<string>
 {
     "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
     "http://localhost:5173",
     "https://localhost:3000",
     "https://crm.fourd.com.au"
@@ -154,10 +157,16 @@ if (app.Environment.IsDevelopment())
 // Use response compression EARLY in the pipeline
 app.UseResponseCompression();
 
+app.UseStaticFiles();
+
 // Use CORS before other middleware
 app.UseCors("AllowFrontend");
 
-app.UseHttpsRedirection();
+// Only use HTTPS redirection in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();

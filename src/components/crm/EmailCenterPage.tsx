@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { Send, Mail, Clock, CheckCircle, AlertCircle, Search, RefreshCw, User, Building2, X, FileText, Users, BarChart3, Plus, Trash2, Edit } from 'lucide-react';
-import { emailApi, templateApi, SentEmail, EmailContact, EmailTemplate } from '../../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Mail, Clock, CheckCircle, AlertCircle, Search, RefreshCw, User, Building2, X, FileText, Users, BarChart3, Plus, Trash2, Edit, Bold, Italic, Underline, List, ListOrdered, Link, Image, AlignLeft, AlignCenter, AlignRight, Type } from 'lucide-react';
+import { emailApi, templateApi, mediaApi, SentEmail, EmailContact, EmailTemplate } from '../../services/api';
 
 type Tab = 'compose' | 'bulkSend' | 'templates' | 'campaigns' | 'history';
+
+interface AttachmentItem {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+  isImage: boolean;
+}
 
 interface Campaign {
   id: string;
@@ -20,6 +29,185 @@ interface Campaign {
   sentAt?: string;
 }
 
+// Rich Text Editor Toolbar Component
+interface RichTextToolbarProps {
+  editorRef: React.RefObject<HTMLDivElement | null>;
+  onContentChange: (html: string) => void;
+  showImageResize?: boolean;
+}
+
+function RichTextToolbar({ editorRef, onContentChange, showImageResize = true }: RichTextToolbarProps) {
+  const execCommand = (command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    setTimeout(() => {
+      if (editorRef.current) {
+        onContentChange(editorRef.current.innerHTML);
+      }
+    }, 0);
+  };
+
+  const insertLink = () => {
+    const url = prompt('Enter URL:');
+    if (url) {
+      execCommand('createLink', url);
+    }
+  };
+
+  const insertImage = () => {
+    const url = prompt('Enter image URL:');
+    if (url) {
+      execCommand('insertImage', url);
+    }
+  };
+
+  const resizeImages = (widthPercent: number, sideBySide = false) => {
+    if (!editorRef.current) return;
+    const images = editorRef.current.querySelectorAll('img');
+    images.forEach(img => {
+      img.style.width = sideBySide ? '48%' : `${widthPercent}%`;
+      img.style.height = 'auto';
+      img.style.display = 'inline-block';
+      img.style.verticalAlign = 'top';
+      img.style.marginRight = sideBySide ? '2%' : '0';
+    });
+    onContentChange(editorRef.current.innerHTML);
+  };
+
+  const btnStyle: React.CSSProperties = {
+    padding: '6px 8px',
+    backgroundColor: 'transparent',
+    color: '#9ca3af',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const btnHoverStyle = { backgroundColor: '#1a2332', color: 'white' };
+
+  return (
+    <div style={{ display: 'flex', gap: '2px', padding: '8px', backgroundColor: '#0b1220', borderRadius: '8px 8px 0 0', borderBottom: '1px solid #1a2332', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Text Formatting */}
+      <button type="button" onClick={() => execCommand('bold')} style={btnStyle} title="Bold (Ctrl+B)"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <Bold size={16} />
+      </button>
+      <button type="button" onClick={() => execCommand('italic')} style={btnStyle} title="Italic (Ctrl+I)"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <Italic size={16} />
+      </button>
+      <button type="button" onClick={() => execCommand('underline')} style={btnStyle} title="Underline (Ctrl+U)"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <Underline size={16} />
+      </button>
+
+      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
+
+      {/* Font Size */}
+      <select
+        onChange={(e) => execCommand('fontSize', e.target.value)}
+        style={{ padding: '4px 8px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+        defaultValue="3"
+        title="Font Size"
+      >
+        <option value="1">Small</option>
+        <option value="3">Normal</option>
+        <option value="5">Large</option>
+        <option value="7">Huge</option>
+      </select>
+
+      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
+
+      {/* Lists */}
+      <button type="button" onClick={() => execCommand('insertUnorderedList')} style={btnStyle} title="Bullet List"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <List size={16} />
+      </button>
+      <button type="button" onClick={() => execCommand('insertOrderedList')} style={btnStyle} title="Numbered List"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <ListOrdered size={16} />
+      </button>
+
+      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
+
+      {/* Alignment */}
+      <button type="button" onClick={() => execCommand('justifyLeft')} style={btnStyle} title="Align Left"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <AlignLeft size={16} />
+      </button>
+      <button type="button" onClick={() => execCommand('justifyCenter')} style={btnStyle} title="Align Center"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <AlignCenter size={16} />
+      </button>
+      <button type="button" onClick={() => execCommand('justifyRight')} style={btnStyle} title="Align Right"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <AlignRight size={16} />
+      </button>
+
+      <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
+
+      {/* Link & Image */}
+      <button type="button" onClick={insertLink} style={btnStyle} title="Insert Link"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <Link size={16} />
+      </button>
+      <button type="button" onClick={insertImage} style={btnStyle} title="Insert Image URL"
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnHoverStyle)}
+        onMouseLeave={e => Object.assign(e.currentTarget.style, { backgroundColor: 'transparent', color: '#9ca3af' })}>
+        <Image size={16} />
+      </button>
+
+      {/* Text Color */}
+      <input
+        type="color"
+        onChange={(e) => execCommand('foreColor', e.target.value)}
+        style={{ width: '28px', height: '28px', padding: '0', border: 'none', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'transparent' }}
+        title="Text Color"
+        defaultValue="#ffffff"
+      />
+
+      {/* Image Resize Options */}
+      {showImageResize && (
+        <>
+          <div style={{ width: '1px', height: '20px', backgroundColor: '#2a3442', margin: '0 6px' }} />
+          <span style={{ color: '#6b7280', fontSize: '11px', marginRight: '4px' }}>Img:</span>
+          {[25, 50, 75, 100].map(size => (
+            <button
+              key={size}
+              type="button"
+              onClick={() => resizeImages(size)}
+              style={{ padding: '3px 6px', backgroundColor: '#1a2332', color: '#9ca3af', border: '1px solid #2a3442', borderRadius: '3px', cursor: 'pointer', fontSize: '10px' }}
+              title={`Resize images to ${size}%`}
+            >
+              {size}%
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => resizeImages(48, true)}
+            style={{ padding: '3px 6px', backgroundColor: '#1a2332', color: '#00ff88', border: '1px solid #00ff88', borderRadius: '3px', cursor: 'pointer', fontSize: '10px' }}
+            title="Side by Side"
+          >
+            Side
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function EmailCenterPage() {
   const [activeTab, setActiveTab] = useState<Tab>('compose');
   const [loading, setLoading] = useState(false);
@@ -35,17 +223,25 @@ export function EmailCenterPage() {
   const [toName, setToName] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [bodyHtml, setBodyHtml] = useState('');
   const [showContactPicker, setShowContactPicker] = useState(false);
+  const [composeAttachments, setComposeAttachments] = useState<AttachmentItem[]>([]);
+  const composeEditorRef = useRef<HTMLDivElement | null>(null);
+  const skipComposeSyncRef = useRef(false);
+  const [pendingUploads, setPendingUploads] = useState(0);
 
   // Bulk send state
   const [allContacts, setAllContacts] = useState<EmailContact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [bulkSubject, setBulkSubject] = useState('');
   const [bulkBody, setBulkBody] = useState('');
+  const [bulkHtmlBody, setBulkHtmlBody] = useState('');
   const [campaignName, setCampaignName] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>("");
+  const [bulkAttachments, setBulkAttachments] = useState<AttachmentItem[]>([]);
+  const bulkEditorRef = useRef<HTMLDivElement | null>(null);
 
   // Templates state
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -54,6 +250,23 @@ export function EmailCenterPage() {
   const [templateName, setTemplateName] = useState('');
   const [templateSubject, setTemplateSubject] = useState('');
   const [templateBody, setTemplateBody] = useState('');
+  const [templateHtmlBody, setTemplateHtmlBody] = useState('');
+  const [templateAttachments, setTemplateAttachments] = useState<AttachmentItem[]>([]);
+  const templateEditorRef = useRef<HTMLDivElement | null>(null);
+  const signatureEditorRef = useRef<HTMLDivElement | null>(null);
+  const [includeTemplateSignature, setIncludeTemplateSignature] = useState(false);
+  const [selectedTemplateSignatureId, setSelectedTemplateSignatureId] = useState<string>('');
+
+  // Signatures
+  const [signatures, setSignatures] = useState<{ id: string; name: string; html: string }[]>([]);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [editingSignatureId, setEditingSignatureId] = useState<string | null>(null);
+  const [signatureName, setSignatureName] = useState('');
+  const [signatureHtml, setSignatureHtml] = useState('');
+  const [selectedSignatureId, setSelectedSignatureId] = useState<string>('');
+  const [includeSignature, setIncludeSignature] = useState(false);
+  const signatureSelectionRef = useRef<Range | null>(null);
+  const skipSignatureSyncRef = useRef(false);
 
   // Campaigns state
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -77,6 +290,83 @@ export function EmailCenterPage() {
       loadHistory();
     }
   }, [activeTab, contactSearch, showContactPicker, stateFilter]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('crm_email_signatures');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as { id: string; name: string; html: string }[];
+        const cleaned = parsed.map((sig) => {
+          let html = sig.html || '';
+          html = html.replace(/<img[^>]*alt=["']Signature image["'][^>]*>/gi, '');
+          html = html.replace(/<img[^>]*src=["']\s*["'][^>]*>/gi, '');
+          html = html.replace(/<img[^>]*src=["']https?:\/\/(localhost|127\.0\.0\.1)[^"']*["'][^>]*>/gi, '');
+          html = html.replace(/Signature image/gi, '');
+          return { ...sig, html };
+        });
+        setSignatures(cleaned);
+      } catch {
+        setSignatures([]);
+      }
+      return;
+    }
+
+    const defaultSignatureHtml = `Cheers,<br/><strong>Dani</strong><br/><div style="height:3px;background:#3b82f6;margin:10px 0;"></div><strong>Danielle Mako</strong><br/>Fourtify Defence Pty Ltd, Chief Executive Officer<br/>Secure. Sovereign. Defence-Ready.<br/>Fourtify Defence Pty Ltd<br/>+61 4 1935 2820<br/>dani@fourd.com.au<br/>17-21 University Avenue<br/>Canberra, ACT 2601<br/><a href="https://www.fourd.com.au" target="_blank" rel="noreferrer">https://www.fourd.com.au</a><br/><br/><span style="font-size:12px;color:#6b7280;">The content of this email is confidential and intended for the recipient specified in message only. It is strictly forbidden to share any part of this message with any third party, without a written consent of the sender. If you received this message by mistake, please reply to this message and follow with its deletion, so that we can ensure such a mistake does not occur in the future.</span>`;
+
+    setSignatures([{ id: 'sig:default-dani', name: 'Dani Default', html: defaultSignatureHtml }]);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('crm_email_signatures', JSON.stringify(signatures));
+  }, [signatures]);
+
+  useEffect(() => {
+    if (includeSignature && !selectedSignatureId && signatures.length > 0) {
+      setSelectedSignatureId(signatures[0].id);
+    }
+  }, [includeSignature, selectedSignatureId, signatures]);
+
+  useEffect(() => {
+    if (includeTemplateSignature && !selectedTemplateSignatureId && signatures.length > 0) {
+      setSelectedTemplateSignatureId(signatures[0].id);
+    }
+  }, [includeTemplateSignature, selectedTemplateSignatureId, signatures]);
+
+  useEffect(() => {
+    if (!signatureEditorRef.current) return;
+    if (skipSignatureSyncRef.current) {
+      skipSignatureSyncRef.current = false;
+      return;
+    }
+    const nextHtml = signatureHtml || '';
+    if (signatureEditorRef.current.innerHTML !== nextHtml) {
+      signatureEditorRef.current.innerHTML = nextHtml;
+    }
+  }, [signatureHtml]);
+
+  useEffect(() => {
+    if (!composeEditorRef.current) return;
+    if (skipComposeSyncRef.current) {
+      skipComposeSyncRef.current = false;
+      return;
+    }
+    const nextHtml = bodyHtml || '';
+    if (composeEditorRef.current.innerHTML !== nextHtml) {
+      composeEditorRef.current.innerHTML = nextHtml;
+    }
+  }, [bodyHtml]);
+
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccess(null), 4000);
+    return () => clearTimeout(timer);
+  }, [success]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 5000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   const loadContacts = async () => {
     try {
@@ -149,9 +439,296 @@ export function EmailCenterPage() {
     setToName('');
   };
 
+  const buildHtmlBody = (baseHtml: string, attachments: AttachmentItem[]) => {
+    if (attachments.length === 0) return baseHtml;
+    const attachmentMarkup = attachments
+      .map((file) =>
+        file.isImage
+          ? `<div style=\"margin:8px 0;\"><img src=\"${file.dataUrl}\" alt=\"${file.name}\" style=\"max-width:100%;height:auto;\" /></div>`
+          : `<div style=\"margin:6px 0;\"><a href=\"${file.dataUrl}\" download=\"${file.name}\">${file.name}</a></div>`
+      )
+      .join('');
+    const separator = baseHtml ? '<hr style="margin:16px 0;border:0;border-top:1px solid #e5e7eb;" />' : '';
+    return `${baseHtml}${separator}<div>${attachmentMarkup}</div>`;
+  };
+
+  const stripHtml = (html: string) =>
+    html.replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\u200E/g, '')
+      .trim();
+
+  const textToHtml = (text: string) =>
+    text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br/>');
+
+  const stripLrmFromHtml = (html: string) =>
+    html
+      .replace(/\u200E/g, '')
+      .replace(/<span[^>]*data-lrm=["']true["'][^>]*>\s*<\/span>/gi, '');
+
+  const beginUpload = () => setPendingUploads((count) => count + 1);
+  const endUpload = () => setPendingUploads((count) => Math.max(0, count - 1));
+
+  const dataUrlToFile = (dataUrl: string, filename: string) => {
+    const [meta, content] = dataUrl.split(',');
+    const match = /data:(.*?);/i.exec(meta);
+    const mime = match?.[1] || 'image/png';
+    const binary = atob(content || '');
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new File([bytes], filename, { type: mime });
+  };
+
+  const fetchUrlToFile = async (url: string, filename: string) => {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new File([blob], filename, { type: blob.type || 'image/png' });
+  };
+
+  const ensureHostedImagesInHtml = async (html: string) => {
+    if (!html) return html;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const images = Array.from(doc.images);
+    for (const img of images) {
+      const src = img.getAttribute('src') || '';
+      if (src.startsWith('data:image')) {
+        const file = dataUrlToFile(src, `upload-${Date.now()}.png`);
+        const result = await mediaApi.uploadImage(file);
+        img.setAttribute('src', result.url);
+        img.removeAttribute('data-upload-id');
+      } else if (/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(src)) {
+        const file = await fetchUrlToFile(src, `upload-${Date.now()}.png`);
+        const result = await mediaApi.uploadImage(file);
+        img.setAttribute('src', result.url);
+      }
+    }
+    return doc.body.innerHTML;
+  };
+
+  const normalizeSignatureHtml = (html: string) => {
+    const withoutBadImages = html
+      .replace(/<img[^>]*src\s*=\s*(["'])\s*(|)\1[^>]*>/gi, '')
+      .replace(/<img[^>]*src=["']https?:\/\/(localhost|127\.0\.0\.1)[^"']*["'][^>]*>/gi, '')
+      .replace(/Signature image/gi, '');
+    return withoutBadImages.replace(/<img([^>]*?)>/gi, (match, attrs) => {
+      if (/style\s*=/.test(attrs)) {
+        return `<img${attrs.replace(/style\s*=\s*(["'])(.*?)\1/i, (m, q, s) => {
+          const next = `${s};display:block;max-width:140px;height:auto;`;
+          return `style=${q}${next}${q}`;
+        })}>`;
+      }
+      return `<img${attrs} style="display:block;max-width:140px;height:auto;" />`;
+    });
+  };
+
+  const hasUnhostedImages = (html: string) =>
+    /data:image|https?:\/\/(localhost|127\.0\.0\.1)/i.test(html || '');
+
+  const enforceLtrOnEditor = (element: HTMLDivElement | null) => {
+    if (!element) return;
+    element.setAttribute('dir', 'ltr');
+    element.style.direction = 'ltr';
+    element.style.unicodeBidi = 'bidi-override';
+    element.style.textAlign = 'left';
+
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT);
+    let current = walker.currentNode as HTMLElement | null;
+    while (current) {
+      if (current.getAttribute) {
+        const dir = current.getAttribute('dir');
+        if (dir && dir !== 'ltr') {
+          current.setAttribute('dir', 'ltr');
+        }
+      }
+      if (current instanceof HTMLElement) {
+        if (current.style.direction === 'rtl') {
+          current.style.direction = 'ltr';
+        }
+        if (current.style.unicodeBidi && current.style.unicodeBidi !== 'bidi-override') {
+          current.style.unicodeBidi = 'bidi-override';
+        }
+        if (current.style.textAlign === 'right') {
+          current.style.textAlign = 'left';
+        }
+      }
+      current = walker.nextNode() as HTMLElement | null;
+    }
+  };
+
+  const ensureLrmPrefix = (element: HTMLDivElement | null) => {
+    if (!element) return;
+    const text = element.textContent || '';
+    if (text.startsWith('\u200E')) return;
+    const lrmNode = document.createTextNode('\u200E');
+    if (element.firstChild) {
+      element.insertBefore(lrmNode, element.firstChild);
+    } else {
+      element.appendChild(lrmNode);
+    }
+  };
+
+  const saveSignatureSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    signatureSelectionRef.current = selection.getRangeAt(0);
+  };
+
+  const restoreSignatureSelection = () => {
+    const selection = window.getSelection();
+    const range = signatureSelectionRef.current;
+    if (!selection || !range) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+
+  const moveCaretToEnd = (element: HTMLDivElement | null) => {
+    if (!element) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const insertUploadingImage = (editorRef: React.RefObject<HTMLDivElement>, dataUrl: string, uploadId: string) => {
+    const html = `<img src="${dataUrl}" data-upload-id="${uploadId}" style="display:block;max-width:140px;height:auto;margin:8px 0;" />`;
+    document.execCommand('insertHTML', false, html);
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+  };
+
+  const replaceUploadingImage = (editorRef: React.RefObject<HTMLDivElement>, uploadId: string, hostedUrl: string) => {
+    if (!editorRef.current) return;
+    const img = editorRef.current.querySelector(`img[data-upload-id="${uploadId}"]`) as HTMLImageElement | null;
+    if (!img) return;
+    img.src = hostedUrl;
+    img.removeAttribute('data-upload-id');
+  };
+
+  const handlePasteToEditor = (
+    event: React.ClipboardEvent<HTMLDivElement>,
+    editorRef: React.RefObject<HTMLDivElement>,
+    onUpdate: (html: string) => void,
+    uploadImages = false
+  ) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    let hasImage = false;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        hasImage = true;
+        break;
+      }
+    }
+
+    if (!hasImage) return;
+
+    event.preventDefault();
+    Array.from(items).forEach((item) => {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) return;
+        if (uploadImages) {
+          const uploadId = `upload:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const reader = new FileReader();
+          reader.onload = () => {
+            insertUploadingImage(editorRef, String(reader.result || ''), uploadId);
+            if (editorRef.current) {
+              onUpdate(editorRef.current.innerHTML);
+            }
+            beginUpload();
+            mediaApi.uploadImage(file)
+              .then((result) => {
+                replaceUploadingImage(editorRef, uploadId, result.url);
+                if (editorRef.current) {
+                  onUpdate(editorRef.current.innerHTML);
+                }
+                endUpload();
+              })
+              .catch((err) => {
+                console.error('Image upload failed:', err);
+                setError('Image upload failed. Please try again; the image must be hosted for recipients to see it.');
+                endUpload();
+              });
+          };
+          reader.readAsDataURL(file);
+        } else {
+          const reader = new FileReader();
+          reader.onload = () => {
+            document.execCommand('insertImage', false, String(reader.result || ''));
+            if (editorRef.current) {
+              onUpdate(editorRef.current.innerHTML);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      } else if (item.type === 'text/plain') {
+        item.getAsString((text) => {
+          document.execCommand('insertText', false, text);
+          if (editorRef.current) {
+            onUpdate(editorRef.current.innerHTML);
+          }
+        });
+      }
+    });
+  };
+
+
+  const handleFileUpload = async (
+    files: FileList | null,
+    setAttachments: React.Dispatch<React.SetStateAction<AttachmentItem[]>>
+  ) => {
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    const loaded = await Promise.all(
+      fileArray.map(
+        (file) =>
+          new Promise<AttachmentItem>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                id: `${file.name}-${file.size}-${file.lastModified}`,
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                size: file.size,
+                dataUrl: String(reader.result || ''),
+                isImage: file.type.startsWith('image/'),
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+
+    setAttachments((prev) => [...prev, ...loaded]);
+  };
+
   const handleSend = async () => {
-    if (!toEmail || !subject || !body) {
+    if (!toEmail || !subject || (!body && !bodyHtml)) {
       setError('Please fill in recipient email, subject, and message');
+      return;
+    }
+
+    if (hasUnhostedImages(bodyHtml)) {
+      setError('Please wait for image upload to finish before sending.');
       return;
     }
 
@@ -160,11 +737,23 @@ export function EmailCenterPage() {
     setSuccess(null);
 
     try {
+      const selectedSignature = signatures.find(s => s.id === selectedSignatureId);
+      const baseBodyHtml = stripLrmFromHtml(bodyHtml || textToHtml(body));
+      const hostedBodyHtml = await ensureHostedImagesInHtml(baseBodyHtml);
+      const signatureHtml = includeSignature && selectedSignature?.html
+        ? await ensureHostedImagesInHtml(normalizeSignatureHtml(selectedSignature.html))
+        : '';
+      const signatureHtmlBlock = signatureHtml ? `<br/><br/>${signatureHtml}` : '';
+      const composedHtml = `${hostedBodyHtml}${signatureHtmlBlock}`;
+      const finalHtml = buildHtmlBody(composedHtml, composeAttachments);
+      const textBody = stripHtml(finalHtml);
+
       const result = await emailApi.send({
         toEmail,
         toName,
         subject,
-        body,
+        body: textBody,
+        htmlBody: finalHtml,
         contactId: selectedContact?.id,
         organisationId: selectedContact?.organisationId,
       });
@@ -174,6 +763,8 @@ export function EmailCenterPage() {
         clearRecipient();
         setSubject('');
         setBody('');
+        setBodyHtml('');
+        setComposeAttachments([]);
       } else {
         setError(result.message || 'Failed to send email');
       }
@@ -203,6 +794,7 @@ export function EmailCenterPage() {
         contactIds: Array.from(selectedContactIds),
         subject: bulkSubject,
         body: bulkBody,
+        htmlBody: buildHtmlBody(bulkHtmlBody, bulkAttachments),
         campaignName: campaignName || undefined,
       });
 
@@ -211,6 +803,8 @@ export function EmailCenterPage() {
         setSelectedContactIds(new Set());
         setBulkSubject('');
         setBulkBody('');
+        setBulkHtmlBody('');
+        setBulkAttachments([]);
         setCampaignName('');
       } else {
         setError(result.message || 'Failed to send emails');
@@ -228,10 +822,9 @@ export function EmailCenterPage() {
       return;
     }
 
-    debugger
-
     if(selectedTemplateId === ""){
       setError('Please select a template');
+      return;
     }
 
     const selectedTemplate = templates.find(
@@ -252,6 +845,7 @@ export function EmailCenterPage() {
         contactIds: Array.from(selectedContactIds),
         subject: selectedTemplate.subject,
         body: selectedTemplate.body,
+        htmlBody: selectedTemplate.htmlBody || undefined,
         campaignName: campaignName || undefined,
       });
 
@@ -260,6 +854,8 @@ export function EmailCenterPage() {
         setSelectedContactIds(new Set());
         setBulkSubject('');
         setBulkBody('');
+        setBulkHtmlBody('');
+        setBulkAttachments([]);
         setCampaignName('');
       } else {
         setError(result.message || 'Failed to send emails');
@@ -295,19 +891,28 @@ export function EmailCenterPage() {
       return;
     }
 
+    const selectedTemplateSignature = signatures.find(s => s.id === selectedTemplateSignatureId);
+    const signatureHtmlBlock = includeTemplateSignature && selectedTemplateSignature?.html
+      ? `<br/><br/>${selectedTemplateSignature.html}`
+      : '';
+    const composedTemplateHtml = `${templateHtmlBody || textToHtml(templateBody)}${signatureHtmlBlock}`;
+    const composedTemplateBody = `${templateBody}${includeTemplateSignature && selectedTemplateSignature?.html ? `\n\n${stripHtml(selectedTemplateSignature.html)}` : ''}`;
+
     try {
       if (editingTemplate) {
         await templateApi.update(editingTemplate.id, {
           name: templateName,
           subject: templateSubject,
-          body: templateBody,
+          body: composedTemplateBody,
+          htmlBody: buildHtmlBody(composedTemplateHtml, templateAttachments),
         });
         setSuccess('Template updated!');
       } else {
         await templateApi.create({
           name: templateName,
           subject: templateSubject,
-          body: templateBody,
+          body: composedTemplateBody,
+          htmlBody: buildHtmlBody(composedTemplateHtml, templateAttachments),
         });
         setSuccess('Template created!');
       }
@@ -316,6 +921,10 @@ export function EmailCenterPage() {
       setTemplateName('');
       setTemplateSubject('');
       setTemplateBody('');
+      setTemplateHtmlBody('');
+      setTemplateAttachments([]);
+      setIncludeTemplateSignature(false);
+      setSelectedTemplateSignatureId('');
       loadTemplates();
     } catch (err: any) {
       setError(err.message || 'Failed to save template');
@@ -327,20 +936,18 @@ export function EmailCenterPage() {
     try {
       await templateApi.delete(id);
       setSuccess('Template deleted');
-      loadTemplates();
+      setTemplates(prev => prev.filter(t => t.id !== id));
     } catch (err: any) {
       setError(err.message || 'Failed to delete template');
     }
   };
 
   const useTemplate = (template: EmailTemplate) => {
-    if (activeTab === 'compose') {
-      setSubject(template.subject);
-      setBody(template.body);
-    } else if (activeTab === 'bulkSend') {
-      setBulkSubject(template.subject);
-      setBulkBody(template.body);
-    }
+    setActiveTab('compose');
+    setSubject(template.subject);
+    setBody(template.body);
+    setBodyHtml(template.htmlBody || textToHtml(template.body || ''));
+    setComposeAttachments([]);
     setSuccess(`Template "${template.name}" applied!`);
   };
 
@@ -349,6 +956,10 @@ export function EmailCenterPage() {
     setTemplateName(template.name);
     setTemplateSubject(template.subject);
     setTemplateBody(template.body);
+    setTemplateHtmlBody(template.htmlBody || '');
+    setTemplateAttachments([]);
+    setIncludeTemplateSignature(false);
+    setSelectedTemplateSignatureId('');
     setShowTemplateModal(true);
   };
 
@@ -401,7 +1012,7 @@ export function EmailCenterPage() {
     outline: 'none',
   };
 
-  const handleTemplateSelection = (event) => {
+  const handleTemplateSelection = (event: React.ChangeEvent<HTMLSelectElement>) => {
     
     const selectedOption = event.target.options[event.target.selectedIndex];
     setSelectedTemplateId(event.target.value);
@@ -541,13 +1152,143 @@ export function EmailCenterPage() {
           {/* Body */}
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Message</label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your message..."
-              rows={8}
-              style={{ ...inputStyle, resize: 'vertical' }}
+            <RichTextToolbar 
+              editorRef={composeEditorRef} 
+              onContentChange={(html) => {
+                skipComposeSyncRef.current = true;
+                setBodyHtml(html);
+                setBody(stripHtml(html));
+              }}
             />
+            <div style={{ position: 'relative', border: '1px solid #2a3442', borderTop: 'none', borderRadius: '0 0 8px 8px', backgroundColor: '#1a2332' }}>
+              {stripHtml(bodyHtml || '') === '' && (!composeEditorRef.current || composeEditorRef.current.innerText.replace(/\u200E/g, '').trim().length === 0) && (
+                <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
+                  Write your message... (paste images directly)
+                </div>
+              )}
+              <div
+                ref={composeEditorRef}
+                contentEditable
+                className="editor-ltr"
+                dir="ltr"
+                onBeforeInput={(e) => {
+                  enforceLtrOnEditor(e.currentTarget);
+                  ensureLrmPrefix(e.currentTarget);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    document.execCommand('defaultParagraphSeparator', false, 'div');
+                  }
+                  enforceLtrOnEditor(e.currentTarget);
+                  ensureLrmPrefix(e.currentTarget);
+                  requestAnimationFrame(() => moveCaretToEnd(e.currentTarget));
+                }}
+                onFocus={(e) => {
+                  enforceLtrOnEditor(e.currentTarget);
+                  ensureLrmPrefix(e.currentTarget);
+                  document.execCommand('defaultParagraphSeparator', false, 'div');
+                  requestAnimationFrame(() => moveCaretToEnd(e.currentTarget));
+                }}
+                onInput={(e) => {
+                  enforceLtrOnEditor(e.currentTarget);
+                  ensureLrmPrefix(e.currentTarget);
+                  const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                  skipComposeSyncRef.current = true;
+                  setBodyHtml(html);
+                  setBody(stripHtml(html));
+                  requestAnimationFrame(() => moveCaretToEnd(e.currentTarget));
+                }}
+                onPaste={(e) => handlePasteToEditor(e, composeEditorRef, (html) => {
+                  skipComposeSyncRef.current = true;
+                  setBodyHtml(html);
+                  setBody(stripHtml(html));
+                  requestAnimationFrame(() => {
+                    enforceLtrOnEditor(composeEditorRef.current);
+                    ensureLrmPrefix(composeEditorRef.current);
+                    moveCaretToEnd(composeEditorRef.current);
+                  });
+                }, true)}
+                style={{
+                  minHeight: '220px',
+                  padding: '12px 16px',
+                  overflowY: 'auto',
+                  lineHeight: '1.5',
+                  direction: 'ltr',
+                  unicodeBidi: 'bidi-override',
+                  textAlign: 'left',
+                  writingMode: 'horizontal-tb',
+                }}
+                suppressContentEditableWarning
+              />
+            </div>
+            {includeSignature && selectedSignatureId && (
+              <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#0b1220', border: '1px solid #1f2a3a', borderRadius: '8px' }}>
+                <div
+                  style={{ color: 'white', fontSize: '14px' }}
+                  dangerouslySetInnerHTML={{
+                    __html: signatures.find(sig => sig.id === selectedSignatureId)?.html || '',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '14px' }}>
+              <input
+                type="checkbox"
+                checked={includeSignature}
+                onChange={(e) => setIncludeSignature(e.target.checked)}
+              />
+              Add signature
+            </label>
+            <select
+              value={selectedSignatureId}
+              onChange={(e) => setSelectedSignatureId(e.target.value)}
+              style={{ padding: '10px 12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', minWidth: '200px' }}
+            >
+              <option value="">Select signature</option>
+              {signatures.map(sig => (
+                <option key={sig.id} value={sig.id}>{sig.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingSignatureId(null);
+                setSignatureName('');
+                setSignatureHtml('');
+                setShowSignatureModal(true);
+              }}
+              style={{ padding: '10px 14px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              Manage Signatures
+            </button>
+          </div>
+
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Attachments (images, PDFs, spreadsheets)</label>
+            <input
+              id="compose-attachments"
+              type="file"
+              multiple
+              onChange={(e) => handleFileUpload(e.target.files, setComposeAttachments)}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => document.getElementById('compose-attachments')?.click()}
+              style={{ padding: '12px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Plus size={16} /> Add Files
+            </button>
+            {composeAttachments.length > 0 && (
+              <div style={{ marginTop: '8px', color: '#9ca3af', fontSize: '13px' }}>
+                {composeAttachments.map((file) => (
+                  <div key={file.id}>{file.name} ({Math.round(file.size / 1024)} KB)</div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button
@@ -708,16 +1449,64 @@ export function EmailCenterPage() {
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Message</label>
-              <textarea
-                value={bulkBody}
-                onChange={(e) => setBulkBody(e.target.value)}
-                placeholder="Hi {{firstName}},&#10;&#10;Write your message here..."
-                rows={10}
-                style={{ ...inputStyle, resize: 'vertical' }}
+              <RichTextToolbar 
+                editorRef={bulkEditorRef} 
+                onContentChange={(html) => {
+                  setBulkHtmlBody(html);
+                  setBulkBody(stripHtml(html));
+                }}
               />
+              <div style={{ position: 'relative', border: '1px solid #2a3442', borderTop: 'none', borderRadius: '0 0 8px 8px', backgroundColor: '#1a2332' }}>
+                {!bulkHtmlBody && (
+                  <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
+                    Hi {'{{firstName}}'},<br/>Write your message here... (paste images directly)
+                  </div>
+                )}
+                <div
+                  ref={bulkEditorRef}
+                  contentEditable
+                  dir="ltr"
+                  onInput={(e) => {
+                    const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                    setBulkHtmlBody(html);
+                    setBulkBody(stripHtml(html));
+                  }}
+                  onPaste={(e) => handlePasteToEditor(e, bulkEditorRef, (html) => {
+                    setBulkHtmlBody(html);
+                    setBulkBody(stripHtml(html));
+                  })}
+                  style={{
+                    minHeight: '200px',
+                    padding: '12px 16px',
+                    overflowY: 'auto',
+                    lineHeight: '1.5',
+                    direction: 'ltr',
+                    color: 'white',
+                    outline: 'none',
+                  }}
+                  dangerouslySetInnerHTML={{ __html: bulkHtmlBody }}
+                />
+              </div>
               <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '8px' }}>
                 Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{email}}'}, {'{{jobTitle}}'}
               </p>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Attachments (images, PDFs, spreadsheets)</label>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => handleFileUpload(e.target.files, setBulkAttachments)}
+                style={{ color: 'white' }}
+              />
+              {bulkAttachments.length > 0 && (
+                <div style={{ marginTop: '8px', color: '#9ca3af', fontSize: '13px' }}>
+                  {bulkAttachments.map((file) => (
+                    <div key={file.id}>{file.name} ({Math.round(file.size / 1024)} KB)</div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button
@@ -780,8 +1569,8 @@ export function EmailCenterPage() {
 
           {/* Template Modal */}
           {showTemplateModal && (
-            <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-              <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '600px' }}>
+            <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, overflow: 'hidden' }} onClick={(e) => { if (e.target === e.currentTarget) { setShowTemplateModal(false); setEditingTemplate(null); } }}>
+              <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
                 <h2 style={{ fontSize: '20px', color: 'white', marginBottom: '24px' }}>{editingTemplate ? 'Edit Template' : 'New Template'}</h2>
 
                 <div style={{ marginBottom: '16px' }}>
@@ -796,11 +1585,129 @@ export function EmailCenterPage() {
 
                 <div style={{ marginBottom: '24px' }}>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Body</label>
-                  <textarea value={templateBody} onChange={(e) => setTemplateBody(e.target.value)} placeholder="Email body (use {{firstName}}, etc.)" rows={8} style={{ ...inputStyle, resize: 'vertical' }} />
+                  <RichTextToolbar 
+                    editorRef={templateEditorRef} 
+                    onContentChange={(html) => {
+                      setTemplateHtmlBody(html);
+                      setTemplateBody(stripHtml(html));
+                    }}
+                  />
+                  <div style={{ position: 'relative', border: '1px solid #2a3442', borderTop: 'none', borderRadius: '0 0 8px 8px', backgroundColor: '#1a2332' }}>
+                    {!templateHtmlBody && (!templateEditorRef.current || templateEditorRef.current.innerText.trim().length === 0) && (
+                      <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
+                        Write your template... (paste images directly)
+                      </div>
+                    )}
+                    <div
+                      ref={templateEditorRef}
+                      contentEditable
+                      dir="ltr"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          document.execCommand('insertLineBreak');
+                          const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                          setTemplateHtmlBody(html);
+                          setTemplateBody(stripHtml(html));
+                        }
+                      }}
+                      onInput={(e) => {
+                        const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                        setTemplateHtmlBody(html);
+                        setTemplateBody(stripHtml(html));
+                      }}
+                      onPaste={(e) => handlePasteToEditor(e, templateEditorRef, (html) => {
+                        setTemplateHtmlBody(html);
+                        setTemplateBody(stripHtml(html));
+                      })}
+                      style={{
+                        minHeight: '220px',
+                        maxHeight: '300px',
+                        padding: '12px 16px',
+                        overflowY: 'auto',
+                        lineHeight: '1.5',
+                        direction: 'ltr',
+                        unicodeBidi: 'embed',
+                        textAlign: 'left',
+                        writingMode: 'horizontal-tb',
+                        color: 'white',
+                        outline: 'none',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: templateHtmlBody || textToHtml(templateBody || '') }}
+                    />
+                  </div>
+                  {includeTemplateSignature && selectedTemplateSignatureId && (
+                    <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#0b1220', border: '1px solid #1f2a3a', borderRadius: '8px' }}>
+                      <div
+                        style={{ color: 'white', fontSize: '14px' }}
+                        dangerouslySetInnerHTML={{
+                          __html: signatures.find(sig => sig.id === selectedTemplateSignatureId)?.html || '',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '14px' }}>
+                    <input
+                      type="checkbox"
+                      checked={includeTemplateSignature}
+                      onChange={(e) => setIncludeTemplateSignature(e.target.checked)}
+                    />
+                    Add signature
+                  </label>
+                  <select
+                    value={selectedTemplateSignatureId}
+                    onChange={(e) => setSelectedTemplateSignatureId(e.target.value)}
+                    style={{ padding: '10px 12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', minWidth: '200px' }}
+                  >
+                    <option value="">Select signature</option>
+                    {signatures.map(sig => (
+                      <option key={sig.id} value={sig.id}>{sig.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSignatureId(null);
+                      setSignatureName('');
+                      setSignatureHtml('');
+                      setShowSignatureModal(true);
+                    }}
+                    style={{ padding: '10px 14px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    Manage Signatures
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Attachments (images, PDFs, spreadsheets)</label>
+                  <input
+                    id="template-attachments"
+                    type="file"
+                    multiple
+                    onChange={(e) => handleFileUpload(e.target.files, setTemplateAttachments)}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('template-attachments')?.click()}
+                    style={{ padding: '12px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    <Plus size={16} /> Add Files
+                  </button>
+                  {templateAttachments.length > 0 && (
+                    <div style={{ marginTop: '8px', color: '#9ca3af', fontSize: '13px' }}>
+                      {templateAttachments.map((file) => (
+                        <div key={file.id}>{file.name} ({Math.round(file.size / 1024)} KB)</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                  <button onClick={() => { setShowTemplateModal(false); setEditingTemplate(null); }} style={{ padding: '12px 24px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => { setShowTemplateModal(false); setEditingTemplate(null); setIncludeTemplateSignature(false); setSelectedTemplateSignatureId(''); }} style={{ padding: '12px 24px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
                   <button onClick={handleSaveTemplate} style={{ padding: '12px 24px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>{editingTemplate ? 'Update' : 'Create'}</button>
                 </div>
               </div>
@@ -910,6 +1817,165 @@ export function EmailCenterPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Signature Manager Modal */}
+      {showSignatureModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+          <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '24px', width: '100%', maxWidth: '720px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ color: 'white', margin: 0 }}>Signatures</h2>
+              <button onClick={() => setShowSignatureModal(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '20px' }}>×</button>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Signature Name</label>
+              <input
+                type="text"
+                value={signatureName}
+                onChange={(e) => setSignatureName(e.target.value)}
+                placeholder="e.g., Default Signature"
+                style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Signature Content (paste images)</label>
+              {pendingUploads > 0 && (
+                <div style={{ marginBottom: '8px', color: '#f59e0b', fontSize: '12px' }}>
+                  Uploading images... please wait before saving.
+                </div>
+              )}
+              <RichTextToolbar 
+                editorRef={signatureEditorRef} 
+                onContentChange={(html) => {
+                  skipSignatureSyncRef.current = true;
+                  setSignatureHtml(html);
+                }}
+              />
+              <div
+                ref={signatureEditorRef}
+                contentEditable
+                dir="ltr"
+                onFocus={saveSignatureSelection}
+                onKeyUp={saveSignatureSelection}
+                onMouseUp={saveSignatureSelection}
+                onInput={(e) => {
+                  skipSignatureSyncRef.current = true;
+                  setSignatureHtml((e.currentTarget as HTMLDivElement).innerHTML);
+                }}
+                onPaste={(e) => handlePasteToEditor(e, signatureEditorRef, (html) => {
+                  skipSignatureSyncRef.current = true;
+                  setSignatureHtml(html);
+                }, true)}
+                style={{
+                  minHeight: '140px',
+                  padding: '12px',
+                  backgroundColor: '#1a2332',
+                  border: '1px solid #2a3442',
+                  borderTop: 'none',
+                  borderRadius: '0 0 8px 8px',
+                  color: 'white',
+                  lineHeight: '1.5',
+                  direction: 'ltr',
+                  unicodeBidi: 'embed',
+                  textAlign: 'left',
+                  writingMode: 'horizontal-tb',
+                  outline: 'none',
+                }}
+                suppressContentEditableWarning
+              />
+            </div>
+
+            <div style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '12px' }}>
+              Pasted images are automatically hosted so they display properly in email clients.
+            </div>
+
+
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+              <button
+                onClick={async () => {
+                  if (!signatureName.trim()) {
+                    setError('Signature name is required');
+                    return;
+                  }
+                  // Still uploading? Just warn but allow save
+                  if (pendingUploads > 0) {
+                    setError('Images are still uploading. Please wait a moment.');
+                    return;
+                  }
+                  const cleanedSignatureHtml = normalizeSignatureHtml(signatureHtml);
+                  let hostedSignatureHtml = cleanedSignatureHtml;
+                  // Try to upload any remaining base64 images
+                  try {
+                    hostedSignatureHtml = await ensureHostedImagesInHtml(cleanedSignatureHtml);
+                  } catch (err) {
+                    // If upload fails, still save with base64 (will show warning)
+                    console.warn('Image upload failed, saving with embedded images:', err);
+                    hostedSignatureHtml = cleanedSignatureHtml;
+                  }
+                  if (editingSignatureId) {
+                    setSignatures(prev => prev.map(sig => sig.id === editingSignatureId ? { ...sig, name: signatureName, html: hostedSignatureHtml } : sig));
+                  } else {
+                    setSignatures(prev => [...prev, { id: `sig:${Date.now()}`, name: signatureName, html: hostedSignatureHtml }]);
+                  }
+                  setSignatureName('');
+                  setSignatureHtml('');
+                  setEditingSignatureId(null);
+                  setSuccess('Signature saved!');
+                  setTimeout(() => setSuccess(null), 3000);
+                }}
+                style={{ padding: '10px 16px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+              >
+                {editingSignatureId ? 'Update Signature' : 'Save Signature'}
+              </button>
+              <button
+                onClick={() => {
+                  setSignatureName('');
+                  setSignatureHtml('');
+                  setEditingSignatureId(null);
+                }}
+                style={{ padding: '10px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                Clear
+              </button>
+            </div>
+
+            {signatures.length > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <h3 style={{ color: 'white', fontSize: '16px', marginBottom: '8px' }}>Saved Signatures</h3>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {signatures.map(sig => (
+                    <div key={sig.id} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: 'white', fontWeight: '600', marginBottom: '4px' }}>{sig.name}</div>
+                        <div style={{ color: '#9ca3af', fontSize: '12px' }} dangerouslySetInnerHTML={{ __html: sig.html }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => {
+                            setEditingSignatureId(sig.id);
+                            setSignatureName(sig.name);
+                            setSignatureHtml(sig.html);
+                          }}
+                          style={{ padding: '6px 10px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setSignatures(prev => prev.filter(s => s.id !== sig.id))}
+                          style={{ padding: '6px 10px', backgroundColor: '#1a2332', color: '#ef4444', border: '1px solid #2a3442', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

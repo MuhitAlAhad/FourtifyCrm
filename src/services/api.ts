@@ -2,6 +2,7 @@
 // Replace the mock data imports in your components with these API calls
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5122/api';
+const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_URL || API_BASE_URL;
 
 // Helper function for API calls
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -236,6 +237,23 @@ export const emailApi = {
                 sentAt?: string;
             }[];
         }>('/email/campaigns'),
+};
+
+export const mediaApi = {
+    uploadImage: async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch(`${MEDIA_BASE_URL}/uploads`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || `API Error: ${response.status}`);
+        }
+        return response.json() as Promise<{ url: string }>;
+    },
 };
 
 // Templates API
@@ -474,6 +492,7 @@ export default {
     leads: leadApi,
     stats: statsApi,
     email: emailApi,
+    media: mediaApi,
     templates: templateApi,
     auth: authApi,
     admin: adminApi,

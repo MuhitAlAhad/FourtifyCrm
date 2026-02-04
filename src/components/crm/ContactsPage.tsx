@@ -21,10 +21,25 @@ interface ContactDisplay {
 
 export function ContactsPage() {
   const [contacts, setContacts] = useState<ContactDisplay[]>([]);
+  const [organisations, setOrganisations] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContact, setSelectedContact] = useState<ContactDisplay | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editContactId, setEditContactId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    mobile: '',
+    role: '',
+    organisationId: '',
+    isPrimary: false,
+    notes: '',
+    linkedin: '',
+  });
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,6 +76,7 @@ export function ContactsPage() {
           createdAt: contact.createdAt || '',
         };
       });
+      setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
       setContacts(formattedContacts);
     } catch (err) {
       console.error('Error loading contacts:', err);
@@ -79,6 +95,68 @@ export function ContactsPage() {
     } catch (err) {
       console.error('Error deleting contact:', err);
       setError('Failed to delete contact');
+    }
+  };
+
+  const openEditModal = (contact: ContactDisplay) => {
+    setEditContactId(contact.id);
+    setEditForm({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+      phone: contact.phone,
+      mobile: contact.mobile,
+      role: contact.role,
+      organisationId: contact.companyId,
+      isPrimary: contact.isPrimary,
+      notes: contact.notes,
+      linkedin: contact.linkedin,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editContactId) return;
+    try {
+      const updated = await contactApi.update(editContactId, {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        phone: editForm.phone,
+        mobile: editForm.mobile,
+        jobTitle: editForm.role,
+        organisationId: editForm.organisationId,
+        isPrimary: editForm.isPrimary,
+        notes: editForm.notes,
+        linkedIn: editForm.linkedin,
+      });
+
+      const orgName = organisations.find(o => o.id === editForm.organisationId)?.name || 'Unknown';
+      const updatedDisplay: ContactDisplay = {
+        id: updated.id,
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        name: `${updated.firstName} ${updated.lastName}`,
+        email: updated.email,
+        phone: updated.phone || '',
+        mobile: updated.mobile || '',
+        company: orgName,
+        companyId: updated.organisationId || editForm.organisationId,
+        role: updated.jobTitle || '',
+        isPrimary: updated.isPrimary || false,
+        notes: updated.notes || '',
+        linkedin: updated.linkedIn || '',
+        createdAt: updated.createdAt || '',
+      };
+
+      setContacts(prev => prev.map(c => (c.id === editContactId ? updatedDisplay : c)));
+      setSelectedContact(prev => (prev && prev.id === editContactId ? updatedDisplay : prev));
+      setShowEditModal(false);
+      setEditContactId(null);
+    } catch (err) {
+      console.error('Error updating contact:', err);
+      setError('Failed to update contact');
     }
   };
 
@@ -424,10 +502,158 @@ export function ContactsPage() {
               <button style={{ flex: 1, padding: '14px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 <Mail size={18} /> Send Email
               </button>
-              <button style={{ flex: 1, padding: '14px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}>
+              <button
+                onClick={() => {
+                  if (selectedContact) {
+                    openEditModal(selectedContact);
+                    setSelectedContact(null);
+                  }
+                }}
+                style={{ flex: 1, padding: '14px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}
+              >
                 Edit Contact
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Contact Modal */}
+      {showEditModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 60 }}
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#0f1623',
+              border: '2px solid #1a2332',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '640px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: 'white', marginTop: 0, marginBottom: '16px' }}>Edit Contact</h2>
+            <form onSubmit={handleEditSubmit}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>First Name</label>
+                  <input
+                    type="text"
+                    value={editForm.firstName}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, firstName: e.target.value }))}
+                    required
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Last Name</label>
+                  <input
+                    type="text"
+                    value={editForm.lastName}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, lastName: e.target.value }))}
+                    required
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Email</label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Role</label>
+                  <input
+                    type="text"
+                    value={editForm.role}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, role: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Phone</label>
+                  <input
+                    type="text"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Mobile</label>
+                  <input
+                    type="text"
+                    value={editForm.mobile}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, mobile: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation</label>
+                  <select
+                    value={editForm.organisationId}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationId: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  >
+                    <option value="">-- Select organisation --</option>
+                    {organisations.map(org => (
+                      <option key={org.id} value={org.id}>{org.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>LinkedIn</label>
+                  <input
+                    type="text"
+                    value={editForm.linkedin}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, linkedin: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    id="primary-contact"
+                    type="checkbox"
+                    checked={editForm.isPrimary}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, isPrimary: e.target.checked }))}
+                  />
+                  <label htmlFor="primary-contact" style={{ color: '#9ca3af', fontSize: '13px' }}>Primary contact</label>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Notes</label>
+                  <textarea
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                    rows={4}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
