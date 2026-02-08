@@ -20,6 +20,7 @@ export function CRMApp() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [showRegister, setShowRegister] = useState(false);
+  const [emailCenterRecipient, setEmailCenterRecipient] = useState<{ email: string; name: string } | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verifyMessage, setVerifyMessage] = useState('');
   const navigate = useNavigate();
@@ -113,9 +114,12 @@ export function CRMApp() {
       case 'organisations':
         return <OrganisationsPage />;
       case 'contacts':
-        return <ContactsPage />;
+        return <ContactsPage onNavigate={setCurrentPage} onSendEmail={(email, name) => {
+          setEmailCenterRecipient({ email, name });
+          setCurrentPage('email');
+        }} />;
       case 'email':
-        return <EmailCenterPage />;
+        return <EmailCenterPage prefilledRecipient={emailCenterRecipient} onClearRecipient={() => setEmailCenterRecipient(null)} />;
       case 'pipeline':
         return <PipelinePage />;
       case 'clients':

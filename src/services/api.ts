@@ -51,9 +51,88 @@ export interface Contact {
     isPrimary: boolean;
     notes: string;
     linkedIn: string;
+    status: string;
     createdBy: string;
     createdAt: string;
     updatedAt?: string;
+}
+
+export interface ContactActivity {
+    id: string;
+    contactId: string;
+    activityType: string;
+    fieldName: string;
+    oldValue: string;
+    newValue: string;
+    description: string;
+    userName: string;
+    createdAt: string;
+}
+
+// Invoice and Payment interfaces
+export interface InvoiceLineItem {
+    id?: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+}
+
+export interface Invoice {
+    id: string;
+    clientId: string;
+    clientName?: string;
+    invoiceNumber: string;
+    description: string;
+    amount: number;
+    tax: number;
+    totalAmount: number;
+    status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+    issueDate: string;
+    dueDate?: string;
+    paidDate?: string;
+    notes: string;
+    lineItems?: InvoiceLineItem[];
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateInvoiceRequest {
+    clientId: string;
+    invoiceNumber: string;
+    description?: string;
+    amount: number;
+    tax?: number;
+    status?: string;
+    issueDate?: string;
+    dueDate?: string;
+    notes?: string;
+    lineItems?: InvoiceLineItem[];
+}
+
+export interface Payment {
+    id: string;
+    clientId: string;
+    clientName?: string;
+    invoiceId?: string;
+    invoiceNumber?: string;
+    amount: number;
+    paymentMethod: string;
+    paymentDate: string;
+    reference: string;
+    notes: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreatePaymentRequest {
+    clientId: string;
+    invoiceId?: string;
+    amount: number;
+    paymentMethod?: string;
+    paymentDate?: string;
+    reference?: string;
+    notes?: string;
 }
 
 export interface Lead {
@@ -110,6 +189,8 @@ export const contactApi = {
         apiFetch<Contact>(`/contacts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
         apiFetch<void>(`/contacts/${id}`, { method: 'DELETE' }),
+    getActivities: (id: string) =>
+        apiFetch<{ activities: ContactActivity[] }>(`/contacts/${id}/activities`),
 };
 
 // Lead API
@@ -496,6 +577,65 @@ export const clientApi = {
         }>('/clients/stats'),
 };
 
+export const invoiceApi = {
+    getAll: (clientId?: string, status?: string) => {
+        const params = new URLSearchParams();
+        if (clientId) params.append('clientId', clientId);
+        if (status) params.append('status', status);
+        return apiFetch<{ invoices: Invoice[] }>(`/invoices${params.toString() ? '?' + params.toString() : ''}`);
+    },
+    getById: (id: string) =>
+        apiFetch<Invoice>(`/invoices/${id}`),
+    create: (data: CreateInvoiceRequest) =>
+        apiFetch<Invoice>('/invoices', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+    update: (id: string, data: Partial<CreateInvoiceRequest>) =>
+        apiFetch<Invoice>(`/invoices/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+    delete: (id: string) =>
+        apiFetch<void>(`/invoices/${id}`, { method: 'DELETE' }),
+    getStats: (clientId?: string) =>
+        apiFetch<{
+            totalInvoices: number;
+            totalAmount: number;
+            paidAmount: number;
+            unpaidAmount: number;
+            overdueAmount: number;
+        }>(`/invoices/stats${clientId ? '?clientId=' + clientId : ''}`),
+};
+
+export const paymentApi = {
+    getAll: (clientId?: string, invoiceId?: string) => {
+        const params = new URLSearchParams();
+        if (clientId) params.append('clientId', clientId);
+        if (invoiceId) params.append('invoiceId', invoiceId);
+        return apiFetch<{ payments: Payment[] }>(`/payments${params.toString() ? '?' + params.toString() : ''}`);
+    },
+    getById: (id: string) =>
+        apiFetch<Payment>(`/payments/${id}`),
+    create: (data: CreatePaymentRequest) =>
+        apiFetch<Payment>('/payments', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+    update: (id: string, data: Partial<CreatePaymentRequest>) =>
+        apiFetch<Payment>(`/payments/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+    delete: (id: string) =>
+        apiFetch<void>(`/payments/${id}`, { method: 'DELETE' }),
+    getStats: (clientId?: string) =>
+        apiFetch<{
+            totalPayments: number;
+            totalAmount: number;
+        }>(`/payments/stats${clientId ? '?clientId=' + clientId : ''}`),
+};
+
 export default {
     organisations: organisationApi,
     contacts: contactApi,
@@ -508,4 +648,6 @@ export default {
     admin: adminApi,
     meetings: meetingsApi,
     clients: clientApi,
+    invoices: invoiceApi,
+    payments: paymentApi,
 };

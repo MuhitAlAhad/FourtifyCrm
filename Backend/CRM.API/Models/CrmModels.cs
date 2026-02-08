@@ -110,6 +110,9 @@ public class Contact
     [Column("linkedin")]
     public string LinkedIn { get; set; } = string.Empty;
     
+    [Column("status")]
+    public string Status { get; set; } = "new"; // new, contacted, qualified, converted
+    
     [Column("created_by")]
     public string CreatedBy { get; set; } = string.Empty;
     
@@ -777,3 +780,175 @@ public class Client
     [ForeignKey("OrganisationId")]
     public Organisation? Organisation { get; set; }
 }
+
+[Table("contact_activities")]
+public class ContactActivity
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = $"activity:{Guid.NewGuid()}";
+    
+    [Required]
+    [Column("contact_id")]
+    public string ContactId { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("activity_type")]
+    public string ActivityType { get; set; } = string.Empty; // Created, Updated, StatusChanged, etc.
+    
+    [Column("field_name")]
+    public string FieldName { get; set; } = string.Empty;
+    
+    [Column("old_value")]
+    public string OldValue { get; set; } = string.Empty;
+    
+    [Column("new_value")]
+    public string NewValue { get; set; } = string.Empty;
+    
+    [Column("description")]
+    public string Description { get; set; } = string.Empty;
+    
+    [Column("user_name")]
+    public string UserName { get; set; } = "System";
+    
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation property
+    [ForeignKey("ContactId")]
+    public Contact? Contact { get; set; }
+}
+
+[Table("invoices")]
+public class Invoice
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = $"invoice:{Guid.NewGuid()}";
+    
+    [Required]
+    [Column("client_id")]
+    public string ClientId { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("invoice_number")]
+    public string InvoiceNumber { get; set; } = string.Empty;
+    
+    [Column("description")]
+    public string Description { get; set; } = string.Empty;
+    
+    [Column("amount")]
+    public decimal Amount { get; set; } = 0;
+    
+    [Column("tax")]
+    public decimal Tax { get; set; } = 0;
+    
+    [Column("total_amount")]
+    public decimal TotalAmount { get; set; } = 0;
+    
+    [Column("status")]
+    public string Status { get; set; } = "draft"; // draft, sent, paid, overdue, cancelled
+    
+    [Column("issue_date")]
+    public DateTime IssueDate { get; set; } = DateTime.UtcNow;
+    
+    [Column("due_date")]
+    public DateTime? DueDate { get; set; }
+    
+    [Column("paid_date")]
+    public DateTime? PaidDate { get; set; }
+    
+    [Column("notes")]
+    public string Notes { get; set; } = string.Empty;
+    
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation properties
+    [ForeignKey("ClientId")]
+    public Client? Client { get; set; }
+    
+    public ICollection<InvoiceLineItem> LineItems { get; set; } = new List<InvoiceLineItem>();
+}
+
+[Table("invoice_line_items")]
+public class InvoiceLineItem
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = $"line:{Guid.NewGuid()}";
+    
+    [Required]
+    [Column("invoice_id")]
+    public string InvoiceId { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("description")]
+    public string Description { get; set; } = string.Empty;
+    
+    [Column("quantity")]
+    public decimal Quantity { get; set; } = 1;
+    
+    [Column("unit_price")]
+    public decimal UnitPrice { get; set; } = 0;
+    
+    [Column("total")]
+    public decimal Total { get; set; } = 0;
+    
+    [Column("sort_order")]
+    public int SortOrder { get; set; } = 0;
+    
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation property
+    [ForeignKey("InvoiceId")]
+    public Invoice? Invoice { get; set; }
+}
+
+[Table("payments")]
+public class Payment
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = $"payment:{Guid.NewGuid()}";
+    
+    [Column("invoice_id")]
+    public string? InvoiceId { get; set; }
+    
+    [Required]
+    [Column("client_id")]
+    public string ClientId { get; set; } = string.Empty;
+    
+    [Column("amount")]
+    public decimal Amount { get; set; } = 0;
+    
+    [Column("payment_method")]
+    public string PaymentMethod { get; set; } = "bank_transfer"; // bank_transfer, credit_card, cheque, cash
+    
+    [Column("payment_date")]
+    public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
+    
+    [Column("reference")]
+    public string Reference { get; set; } = string.Empty;
+    
+    [Column("notes")]
+    public string Notes { get; set; } = string.Empty;
+    
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Navigation properties
+    [ForeignKey("ClientId")]
+    public Client? Client { get; set; }
+    
+    [ForeignKey("InvoiceId")]
+    public Invoice? Invoice { get; set; }
+}
+

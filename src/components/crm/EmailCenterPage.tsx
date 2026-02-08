@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Mail, Clock, CheckCircle, AlertCircle, Search, RefreshCw, User, Building2, X, FileText, Users, BarChart3, Plus, Trash2, Edit } from 'lucide-react';
-import { emailApi, templateApi, mediaApi, SentEmail, EmailContact, EmailTemplate } from '../../services/api';
+import { emailApi, templateApi, mediaApi, contactApi, SentEmail, EmailContact, EmailTemplate } from '../../services/api';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 type Tab = 'compose' | 'bulkSend' | 'templates' | 'campaigns' | 'history';
+
+interface EmailCenterPageProps {
+  prefilledRecipient?: { email: string; name: string } | null;
+  onClearRecipient?: () => void;
+}
 
 interface AttachmentItem {
   id: string;
@@ -29,7 +36,7 @@ interface Campaign {
   sentAt?: string;
 }
 
-export function EmailCenterPage() {
+export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailCenterPageProps = {}) {
   const [activeTab, setActiveTab] = useState<Tab>('compose');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -94,6 +101,31 @@ export function EmailCenterPage() {
   // History state
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  // Handle prefilled recipient
+  useEffect(() => {
+    if (prefilledRecipient) {
+      setActiveTab('compose');
+      setToEmail(prefilledRecipient.email);
+      setToName(prefilledRecipient.name);
+      if (onClearRecipient) {
+        onClearRecipient();
+      }
+    }
+  }, [prefilledRecipient, onClearRecipient]);
 
   // Load data based on active tab
   useEffect(() => {
@@ -559,15 +591,16 @@ export function EmailCenterPage() {
 
   const handleSend = async () => {
     if (!toEmail || !subject || (!body && !bodyHtml)) {
-      setError('Please fill in recipient email, subject, and message');
+      toast.error('Please fill in recipient email, subject, and message');
       return;
     }
 
     if (hasUnhostedImages(bodyHtml)) {
-      setError('Please wait for image upload to finish before sending.');
+      toast.error('Please wait for image upload to finish before sending.');
       return;
     }
 
+    const loadingToast = toast.loading('Sending email...');
     setSending(true);
     setError(null);
     setSuccess(null);
@@ -595,17 +628,52 @@ export function EmailCenterPage() {
       });
 
       if (result.success) {
-        setSuccess(`Email sent successfully to ${toEmail}!`);
+        toast.success(`Email sent successfully to ${toEmail}!`, { id: loadingToast });
+        
+        // Create or update contact as "contacted"
+        try {
+          const allContactsResponse = await contactApi.getAll();
+          const existingContact = allContactsResponse.contacts.find(
+            (c: any) => c.email?.toLowerCase() === toEmail.toLowerCase()
+          );
+          
+          if (existingContact) {
+            // Update existing contact to "contacted" status
+            if (existingContact.status !== 'contacted' && existingContact.status !== 'qualified' && existingContact.status !== 'converted') {
+              await contactApi.update(existingContact.id, { status: 'contacted' });
+            }
+          } else {
+            // Create new contact with "contacted" status
+            const nameParts = toName ? toName.split(' ') : toEmail.split('@')[0].split('.');
+            await contactApi.create({
+              firstName: nameParts[0] || toEmail.split('@')[0],
+              lastName: nameParts.slice(1).join(' ') || '',
+              email: toEmail,
+              status: 'contacted',
+              organisationId: selectedContact?.organisationId || '',
+              jobTitle: '',
+              phone: '',
+              mobile: '',
+              isPrimary: false,
+              notes: 'Auto-created from email send',
+              linkedIn: '',
+            });
+          }
+        } catch (contactErr) {
+          console.error('Failed to create/update contact:', contactErr);
+          // Don't show error to user since email was sent successfully
+        }
+        
         clearRecipient();
         setSubject('');
         setBody('');
         setBodyHtml('');
         setComposeAttachments([]);
       } else {
-        setError(result.message || 'Failed to send email');
+        toast.error(result.message || 'Failed to send email', { id: loadingToast });
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to send email');
+      toast.error(err.message || 'Failed to send email', { id: loadingToast });
     } finally {
       setSending(false);
     }
@@ -613,14 +681,15 @@ export function EmailCenterPage() {
 
   const handleBulkSend = async () => {
     if (selectedContactIds.size === 0) {
-      setError('Please select at least one contact');
+      toast.error('Please select at least one contact');
       return;
     }
     if (!bulkSubject || !bulkBody) {
-      setError('Please fill in subject and message');
+      toast.error('Please fill in subject and message');
       return;
     }
 
+    const loadingToast = toast.loading(`Sending emails to ${selectedContactIds.size} contacts...`);
     setSending(true);
     setError(null);
     setSuccess(null);
@@ -635,7 +704,25 @@ export function EmailCenterPage() {
       });
 
       if (result.success) {
-        setSuccess(`${result.message}${result.campaignId ? ' - Campaign created!' : ''}`);
+        toast.success(`${result.message}${result.campaignId ? ' - Campaign created!' : ''}`, { id: loadingToast });
+        
+        // Update all sent contacts to "contacted" status
+        try {
+          const contactIdsArray = Array.from(selectedContactIds);
+          for (const contactId of contactIdsArray) {
+            try {
+              const contact = await contactApi.getById(contactId);
+              if (contact.status === 'new') {
+                await contactApi.update(contactId, { status: 'contacted' });
+              }
+            } catch (contactErr) {
+              console.error(`Failed to update contact ${contactId}:`, contactErr);
+            }
+          }
+        } catch (updateErr) {
+          console.error('Failed to update contacts:', updateErr);
+        }
+        
         setSelectedContactIds(new Set());
         setBulkSubject('');
         setBulkBody('');
@@ -643,10 +730,10 @@ export function EmailCenterPage() {
         setBulkAttachments([]);
         setCampaignName('');
       } else {
-        setError(result.message || 'Failed to send emails');
+        toast.error(result.message || 'Failed to send emails', { id: loadingToast });
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to send emails');
+      toast.error(err.message || 'Failed to send emails', { id: loadingToast });
     } finally {
       setSending(false);
     }
@@ -687,6 +774,24 @@ export function EmailCenterPage() {
 
       if (result.success) {
         setSuccess(`${result.message}${result.campaignId ? ' - Campaign created!' : ''}`);
+        
+        // Update all sent contacts to "contacted" status
+        try {
+          const contactIdsArray = Array.from(selectedContactIds);
+          for (const contactId of contactIdsArray) {
+            try {
+              const contact = await contactApi.getById(contactId);
+              if (contact.status === 'new') {
+                await contactApi.update(contactId, { status: 'contacted' });
+              }
+            } catch (contactErr) {
+              console.error(`Failed to update contact ${contactId}:`, contactErr);
+            }
+          }
+        } catch (updateErr) {
+          console.error('Failed to update contacts:', updateErr);
+        }
+        
         setSelectedContactIds(new Set());
         setBulkSubject('');
         setBulkBody('');
@@ -723,7 +828,7 @@ export function EmailCenterPage() {
 
   const handleSaveTemplate = async () => {
     if (!templateName || !templateSubject || !templateBody) {
-      setError('Please fill in all template fields');
+      toast.error('Please fill in all template fields');
       return;
     }
 
@@ -734,6 +839,7 @@ export function EmailCenterPage() {
     const composedTemplateHtml = `${templateHtmlBody || textToHtml(templateBody)}${signatureHtmlBlock}`;
     const composedTemplateBody = `${templateBody}${includeTemplateSignature && selectedTemplateSignature?.html ? `\n\n${stripHtml(selectedTemplateSignature.html)}` : ''}`;
 
+    const loadingToast = toast.loading(editingTemplate ? 'Updating template...' : 'Creating template...');
     try {
       if (editingTemplate) {
         await templateApi.update(editingTemplate.id, {
@@ -742,7 +848,7 @@ export function EmailCenterPage() {
           body: composedTemplateBody,
           htmlBody: buildHtmlBody(composedTemplateHtml, templateAttachments),
         });
-        setSuccess('Template updated!');
+        toast.success('Template updated successfully', { id: loadingToast });
       } else {
         await templateApi.create({
           name: templateName,
@@ -750,7 +856,7 @@ export function EmailCenterPage() {
           body: composedTemplateBody,
           htmlBody: buildHtmlBody(composedTemplateHtml, templateAttachments),
         });
-        setSuccess('Template created!');
+        toast.success('Template created successfully', { id: loadingToast });
       }
       setShowTemplateModal(false);
       setEditingTemplate(null);
@@ -763,19 +869,26 @@ export function EmailCenterPage() {
       setSelectedTemplateSignatureId('');
       loadTemplates();
     } catch (err: any) {
-      setError(err.message || 'Failed to save template');
+      toast.error(err.message || 'Failed to save template', { id: loadingToast });
     }
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (!confirm('Delete this template?')) return;
-    try {
-      await templateApi.delete(id);
-      setSuccess('Template deleted');
-      setTemplates(prev => prev.filter(t => t.id !== id));
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete template');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Template',
+      message: 'Are you sure you want to delete this email template? This action cannot be undone.',
+      onConfirm: async () => {
+        const loadingToast = toast.loading('Deleting template...');
+        try {
+          await templateApi.delete(id);
+          toast.success('Template deleted successfully', { id: loadingToast });
+          setTemplates(prev => prev.filter(t => t.id !== id));
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to delete template', { id: loadingToast });
+        }
+      },
+    });
   };
 
   const useTemplate = (template: EmailTemplate) => {
@@ -784,7 +897,7 @@ export function EmailCenterPage() {
     setBody(template.body);
     setBodyHtml(template.htmlBody || textToHtml(template.body || ''));
     setComposeAttachments([]);
-    setSuccess(`Template "${template.name}" applied!`);
+    toast.success(`Template "${template.name}" applied!`);
   };
 
   const editTemplate = (template: EmailTemplate) => {
@@ -1757,6 +1870,16 @@ export function EmailCenterPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Mail, Phone, Building2, Eye, Trash2, X, AlertCircle, RefreshCw } from 'lucide-react';
-import { contactApi, organisationApi } from '../../services/api';
+import { Plus, Search, Mail, Phone, Building2, Eye, Trash2, X, AlertCircle, RefreshCw, Clock, User } from 'lucide-react';
+import { contactApi, organisationApi, ContactActivity } from '../../services/api';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface ContactDisplay {
   id: string;
@@ -17,16 +19,25 @@ interface ContactDisplay {
   notes: string;
   linkedin: string;
   createdAt: string;
+  status?: string;
 }
 
-export function ContactsPage() {
+interface ContactsPageProps {
+  onNavigate?: (page: string) => void;
+  onSendEmail?: (email: string, name: string) => void;
+}
+
+export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}) {
   const [contacts, setContacts] = useState<ContactDisplay[]>([]);
   const [organisations, setOrganisations] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContact, setSelectedContact] = useState<ContactDisplay | null>(null);
+  const [contactActivities, setContactActivities] = useState<ContactActivity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [editContactId, setEditContactId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     firstName: '',
@@ -36,18 +47,53 @@ export function ContactsPage() {
     mobile: '',
     role: '',
     organisationId: '',
+    organisationAbn: '',
     isPrimary: false,
     notes: '',
     linkedin: '',
+    status: 'new',
   });
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   useEffect(() => {
     loadContacts();
   }, []);
+
+  useEffect(() => {
+    if (selectedContact) {
+      loadContactActivities(selectedContact.id);
+    }
+  }, [selectedContact]);
+
+  const loadContactActivities = async (contactId: string) => {
+    try {
+      setLoadingActivities(true);
+      const response = await contactApi.getActivities(contactId);
+      setContactActivities(response.activities || []);
+    } catch (err) {
+      console.error('Error loading activities:', err);
+      setError('Failed to load activity log');
+      setContactActivities([]);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
 
   const loadContacts = async () => {
     try {
@@ -74,10 +120,15 @@ export function ContactsPage() {
           notes: contact.notes || '',
           linkedin: contact.linkedin || '',
           createdAt: contact.createdAt || '',
+          status: contact.status || 'new',
         };
       });
       setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
-      setContacts(formattedContacts);
+      // Sort by creation date descending (newest first)
+      const sortedContacts = formattedContacts.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setContacts(sortedContacts);
     } catch (err) {
       console.error('Error loading contacts:', err);
       setError('Failed to load contacts. Is the backend running?');
@@ -88,14 +139,22 @@ export function ContactsPage() {
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this contact?')) return;
-    try {
-      await contactApi.delete(id);
-      setContacts(contacts.filter(c => c.id !== id));
-    } catch (err) {
-      console.error('Error deleting contact:', err);
-      setError('Failed to delete contact');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Contact',
+      message: 'Are you sure you want to delete this contact? This action cannot be undone.',
+      onConfirm: async () => {
+        const loadingToast = toast.loading('Deleting contact...');
+        try {
+          await contactApi.delete(id);
+          setContacts(contacts.filter(c => c.id !== id));
+          toast.success('Contact deleted successfully', { id: loadingToast });
+        } catch (err) {
+          console.error('Error deleting contact:', err);
+          toast.error('Failed to delete contact', { id: loadingToast });
+        }
+      },
+    });
   };
 
   const openEditModal = (contact: ContactDisplay) => {
@@ -107,18 +166,106 @@ export function ContactsPage() {
       phone: contact.phone,
       mobile: contact.mobile,
       role: contact.role,
-      organisationId: contact.companyId,
+      organisationId: contact.company,
+      organisationAbn: '',
       isPrimary: contact.isPrimary,
       notes: contact.notes,
       linkedin: contact.linkedin,
+      status: contact.status || 'new',
     });
     setShowEditModal(true);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const loadingToast = toast.loading('Creating contact...');
+    try {
+      // Find or create organisation
+      let orgId = editForm.organisationId;
+      
+      if (orgId && !orgId.startsWith('org:')) {
+        // It's a name, not an ID - find or create the organisation
+        const existingOrg = organisations.find(o => o.name.toLowerCase() === orgId.toLowerCase());
+        
+        if (existingOrg) {
+          orgId = existingOrg.id;
+        } else {
+          // Create new organisation
+          const newOrg = await organisationApi.create({ 
+            name: orgId,
+            abn: editForm.organisationAbn || ''
+          });
+          orgId = newOrg.id;
+          // Refresh organisations list
+          const orgsResponse = await organisationApi.getAll();
+          setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
+        }
+      }
+      
+      const created = await contactApi.create({
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        phone: editForm.phone,
+        mobile: editForm.mobile,
+        jobTitle: editForm.role,
+        organisationId: orgId,
+        isPrimary: editForm.isPrimary,
+        notes: editForm.notes,
+        linkedIn: editForm.linkedin,
+        status: editForm.status,
+      });
+
+      await loadContacts();
+      toast.success('Contact created successfully', { id: loadingToast });
+      setShowAddModal(false);
+      setEditForm({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        mobile: '',
+        role: '',
+        organisationId: '',
+        organisationAbn: '',
+        isPrimary: false,
+        notes: '',
+        linkedin: '',
+        status: 'new',
+      });
+    } catch (err) {
+      console.error('Error creating contact:', err);
+      toast.error('Failed to create contact', { id: loadingToast });
+    }
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editContactId) return;
+    const loadingToast = toast.loading('Updating contact...');
     try {
+      // Find or create organisation
+      let orgId = editForm.organisationId;
+      
+      if (orgId && !orgId.startsWith('org:')) {
+        // It's a name, not an ID - find or create the organisation
+        const existingOrg = organisations.find(o => o.name.toLowerCase() === orgId.toLowerCase());
+        
+        if (existingOrg) {
+          orgId = existingOrg.id;
+        } else {
+          // Create new organisation
+          const newOrg = await organisationApi.create({ 
+            name: orgId,
+            abn: editForm.organisationAbn || ''
+          });
+          orgId = newOrg.id;
+          // Refresh organisations list
+          const orgsResponse = await organisationApi.getAll();
+          setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
+        }
+      }
+      
       const updated = await contactApi.update(editContactId, {
         firstName: editForm.firstName,
         lastName: editForm.lastName,
@@ -126,13 +273,14 @@ export function ContactsPage() {
         phone: editForm.phone,
         mobile: editForm.mobile,
         jobTitle: editForm.role,
-        organisationId: editForm.organisationId,
+        organisationId: orgId,
         isPrimary: editForm.isPrimary,
         notes: editForm.notes,
         linkedIn: editForm.linkedin,
+        status: editForm.status,
       });
 
-      const orgName = organisations.find(o => o.id === editForm.organisationId)?.name || 'Unknown';
+      const orgName = organisations.find(o => o.id === orgId)?.name || editForm.organisationId || 'Unknown';
       const updatedDisplay: ContactDisplay = {
         id: updated.id,
         firstName: updated.firstName,
@@ -142,21 +290,23 @@ export function ContactsPage() {
         phone: updated.phone || '',
         mobile: updated.mobile || '',
         company: orgName,
-        companyId: updated.organisationId || editForm.organisationId,
+        companyId: updated.organisationId || orgId,
         role: updated.jobTitle || '',
         isPrimary: updated.isPrimary || false,
         notes: updated.notes || '',
         linkedin: updated.linkedIn || '',
         createdAt: updated.createdAt || '',
+        status: updated.status || 'new',
       };
 
       setContacts(prev => prev.map(c => (c.id === editContactId ? updatedDisplay : c)));
       setSelectedContact(prev => (prev && prev.id === editContactId ? updatedDisplay : prev));
+      toast.success('Contact updated successfully', { id: loadingToast });
       setShowEditModal(false);
       setEditContactId(null);
     } catch (err) {
       console.error('Error updating contact:', err);
-      setError('Failed to update contact');
+      toast.error('Failed to update contact', { id: loadingToast });
     }
   };
 
@@ -220,7 +370,25 @@ export function ContactsPage() {
           >
             <RefreshCw size={16} /> Refresh
           </button>
-          <button style={{ ...buttonStyle, backgroundColor: '#00ff88', color: '#0f1623' }}>
+          <button 
+            onClick={() => {
+              setEditForm({
+                firstName: '',
+                lastName: '',
+                email: '',
+                phone: '',
+                mobile: '',
+                role: '',
+                organisationId: '',
+                isPrimary: false,
+                notes: '',
+                linkedin: '',
+                status: 'new',
+              });
+              setShowAddModal(true);
+            }}
+            style={{ ...buttonStyle, backgroundColor: '#00ff88', color: '#0f1623' }}
+          >
             <Plus size={18} /> Add Contact
           </button>
         </div>
@@ -274,6 +442,7 @@ export function ContactsPage() {
                   <th style={thStyle}>Phone</th>
                   <th style={thStyle}>Company</th>
                   <th style={thStyle}>Role</th>
+                  <th style={thStyle}>Status</th>
                   <th style={thStyle}>Primary</th>
                   <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
                 </tr>
@@ -324,6 +493,27 @@ export function ContactsPage() {
                       </div>
                     </td>
                     <td style={{ ...tdStyle, color: '#9ca3af' }}>{contact.role || '-'}</td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '4px 10px',
+                        backgroundColor: 
+                          contact.status === 'converted' ? 'rgba(139, 92, 246, 0.1)' :
+                          contact.status === 'qualified' ? 'rgba(59, 130, 246, 0.1)' :
+                          contact.status === 'contacted' ? 'rgba(234, 179, 8, 0.1)' :
+                          'rgba(107, 114, 128, 0.1)',
+                        color: 
+                          contact.status === 'converted' ? '#a78bfa' :
+                          contact.status === 'qualified' ? '#3b82f6' :
+                          contact.status === 'contacted' ? '#eab308' :
+                          '#9ca3af',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        textTransform: 'capitalize',
+                      }}>
+                        {contact.status || 'new'}
+                      </span>
+                    </td>
                     <td style={tdStyle}>
                       {contact.isPrimary && (
                         <span style={{
@@ -487,6 +677,30 @@ export function ContactsPage() {
                   {selectedContact.mobile || '-'}
                 </div>
               </div>
+              <div style={{ backgroundColor: '#1a2332', padding: '16px', borderRadius: '8px' }}>
+                <label style={{ display: 'block', color: '#6b7280', fontSize: '12px', marginBottom: '4px' }}>Status</label>
+                <div style={{ color: 'white', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    padding: '4px 12px',
+                    backgroundColor: 
+                      selectedContact.status === 'converted' ? 'rgba(139, 92, 246, 0.2)' :
+                      selectedContact.status === 'qualified' ? 'rgba(59, 130, 246, 0.2)' :
+                      selectedContact.status === 'contacted' ? 'rgba(234, 179, 8, 0.2)' :
+                      'rgba(107, 114, 128, 0.2)',
+                    color: 
+                      selectedContact.status === 'converted' ? '#a78bfa' :
+                      selectedContact.status === 'qualified' ? '#3b82f6' :
+                      selectedContact.status === 'contacted' ? '#eab308' :
+                      '#9ca3af',
+                    borderRadius: '12px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    textTransform: 'capitalize',
+                  }}>
+                    {selectedContact.status || 'new'}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {selectedContact.notes && (
@@ -498,8 +712,72 @@ export function ContactsPage() {
               </div>
             )}
 
+            {/* Activity Log */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: '#6b7280', fontSize: '14px', marginBottom: '12px', fontWeight: '600' }}>Activity Log</label>
+              <div style={{ backgroundColor: '#1a2332', borderRadius: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+                {loadingActivities ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Loading activity log...</div>
+                ) : contactActivities.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>No activity recorded yet</div>
+                ) : (
+                  <div style={{ padding: '12px' }}>
+                    {contactActivities.map((activity) => (
+                      <div key={activity.id} style={{ 
+                        padding: '12px', 
+                        marginBottom: '8px', 
+                        backgroundColor: '#0f1623', 
+                        borderRadius: '6px',
+                        borderLeft: '3px solid ' + (activity.activityType === 'StatusChanged' ? '#00ff88' : activity.activityType === 'Created' ? '#3b82f6' : '#9ca3af')
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              backgroundColor: activity.activityType === 'StatusChanged' ? 'rgba(0, 255, 136, 0.1)' : activity.activityType === 'Created' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+                              color: activity.activityType === 'StatusChanged' ? '#00ff88' : activity.activityType === 'Created' ? '#3b82f6' : '#9ca3af',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              textTransform: 'uppercase',
+                            }}>
+                              {activity.activityType}
+                            </span>
+                            {activity.fieldName && (
+                              <span style={{ color: '#9ca3af', fontSize: '12px' }}>• {activity.fieldName}</span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6b7280', fontSize: '11px' }}>
+                            <Clock size={12} />
+                            {new Date(activity.createdAt).toLocaleString('en-AU', { 
+                              dateStyle: 'short', 
+                              timeStyle: 'short' 
+                            })}
+                          </div>
+                        </div>
+                        <div style={{ color: '#d1d5db', fontSize: '13px', marginBottom: '6px' }}>
+                          {activity.description}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280', fontSize: '11px' }}>
+                          <User size={12} />
+                          {activity.userName}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button style={{ flex: 1, padding: '14px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <button 
+                onClick={() => {
+                  if (onSendEmail && selectedContact) {
+                    onSendEmail(selectedContact.email, selectedContact.name);
+                  }
+                }}
+                style={{ flex: 1, padding: '14px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
                 <Mail size={18} /> Send Email
               </button>
               <button
@@ -514,6 +792,166 @@ export function ContactsPage() {
                 Edit Contact
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Contact Modal */}
+      {showAddModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 60 }}
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#0f1623',
+              border: '2px solid #1a2332',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '640px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: 'white', marginTop: 0, marginBottom: '16px' }}>Add New Contact</h2>
+            <form onSubmit={handleAddSubmit}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>First Name *</label>
+                  <input
+                    type="text"
+                    value={editForm.firstName}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, firstName: e.target.value }))}
+                    required
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Last Name *</label>
+                  <input
+                    type="text"
+                    value={editForm.lastName}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, lastName: e.target.value }))}
+                    required
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Email</label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Role</label>
+                  <input
+                    type="text"
+                    value={editForm.role}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, role: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Phone</label>
+                  <input
+                    type="text"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Mobile</label>
+                  <input
+                    type="text"
+                    value={editForm.mobile}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, mobile: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation</label>
+                  <input
+                    type="text"
+                    value={editForm.organisationId}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationId: e.target.value }))}
+                    placeholder="Enter organisation name"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation ABN</label>
+                  <input
+                    type="text"
+                    value={editForm.organisationAbn}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationAbn: e.target.value }))}
+                    placeholder="Enter ABN (optional)"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  >
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="converted">Converted</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>LinkedIn</label>
+                  <input
+                    type="text"
+                    value={editForm.linkedin}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, linkedin: e.target.value }))}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    id="add-primary-contact"
+                    type="checkbox"
+                    checked={editForm.isPrimary}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, isPrimary: e.target.checked }))}
+                  />
+                  <label htmlFor="add-primary-contact" style={{ color: '#9ca3af', fontSize: '13px' }}>Primary contact</label>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Notes</label>
+                  <textarea
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                    rows={4}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Add Contact
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -598,15 +1036,35 @@ export function ContactsPage() {
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation</label>
-                  <select
+                  <input
+                    type="text"
                     value={editForm.organisationId}
                     onChange={(e) => setEditForm(prev => ({ ...prev, organisationId: e.target.value }))}
+                    placeholder="Enter organisation name"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation ABN</label>
+                  <input
+                    type="text"
+                    value={editForm.organisationAbn}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationAbn: e.target.value }))}
+                    placeholder="Enter ABN (optional)"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
                     style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
                   >
-                    <option value="">-- Select organisation --</option>
-                    {organisations.map(org => (
-                      <option key={org.id} value={org.id}>{org.name}</option>
-                    ))}
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="converted">Converted</option>
                   </select>
                 </div>
                 <div>
@@ -657,6 +1115,16 @@ export function ContactsPage() {
           </div>
         </div>
       )}
+      
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+      />
     </div>
   );
 }

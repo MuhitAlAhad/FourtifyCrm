@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Mail, Phone, Calendar, Trash2, Edit, Upload, FileSpreadsheet, AlertCircle } from 'lucide-react';
-import { leadApi } from '../../services/api';
+import { leadApi, contactApi, organisationApi } from '../../services/api';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface Lead {
   id: string;
@@ -24,6 +26,19 @@ export function LeadsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   useEffect(() => {
     loadLeads();
   }, []);
@@ -33,30 +48,62 @@ export function LeadsPage() {
       setLoading(true);
       setError(null);
       
-      const { leads: apiLeads } = await leadApi.getAll();
-      const formattedLeads: Lead[] = apiLeads.map(lead => ({
-
-
-      id: lead.id ?? lead.leadId ?? `lead-${Math.random()}`,
-      name: lead.name ?? 'Unnamed Lead',
-      company: lead.organisationId ?? lead.organisationName ?? 'N/A',
-
-      email: lead.email ?? (
-      lead.name
-        ? `${lead.name.toLowerCase().replace(/\s+/g, '')}@example.com`
-        : 'no-email@example.com'
-      ),
-
-phone: lead.phone ?? '+61 000 000 000',
-
-status: mapStageToStatus(lead.stage ?? 'new'),
-source: lead.source ?? '',
-supplierName: lead.supplierName ?? lead.owner ?? '',
-
-createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-
-      }));
-      setLeads(formattedLeads);
+      // Load leads, contacts, and organizations
+      const [leadsResponse, contactsResponse, orgsResponse] = await Promise.all([
+        leadApi.getAll(),
+        contactApi.getAll(),
+        organisationApi.getAll()
+      ]);
+      
+      const apiLeads = leadsResponse.leads || [];
+      const apiContacts = contactsResponse.contacts || [];
+      const apiOrgs = orgsResponse.organisations || [];
+      
+      // Filter contacts to only include contacted and qualified statuses
+      const contactLeads = apiContacts
+        .filter((contact: any) => contact.status === 'contacted' || contact.status === 'qualified')
+        .map((contact: any) => {
+          const org = apiOrgs.find((o: any) => o.id === contact.organisationId);
+          return {
+            id: contact.id,
+            name: `${contact.firstName} ${contact.lastName}`,
+            company: org?.name || 'N/A',
+            email: contact.email || 'no-email@example.com',
+            phone: contact.phone || contact.mobile || '+61 000 000 000',
+            status: contact.status, // 'contacted' or 'qualified'
+            source: 'Contact Form',
+            supplierName: '',
+            createdAt: contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+          };
+        });
+      
+      const formattedLeads: Lead[] = apiLeads.map(lead => {
+        const org = apiOrgs.find((o: any) => o.id === lead.organisationId);
+        return {
+          id: lead.id ?? lead.leadId ?? `lead-${Math.random()}`,
+          name: lead.name ?? 'Unnamed Lead',
+          company: org?.name ?? lead.organisationName ?? 'N/A',
+          email: lead.email ?? (
+            lead.name
+              ? `${lead.name.toLowerCase().replace(/\s+/g, '')}@example.com`
+              : 'no-email@example.com'
+          ),
+          phone: lead.phone ?? '+61 000 000 000',
+          status: mapStageToStatus(lead.stage ?? 'new'),
+          source: lead.source ?? '',
+          supplierName: lead.supplierName ?? lead.owner ?? '',
+          createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+        };
+      });
+      
+      // Combine leads and contact leads, then sort by creation date descending (newest first)
+      const allLeads = [...contactLeads, ...formattedLeads];
+      const sortedLeads = allLeads.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setLeads(sortedLeads);
     } catch (err) {
       console.error('Error loading leads:', err);
       setError('Failed to load leads. Is the backend running?');
@@ -73,6 +120,7 @@ createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new 
   };
 
   const addLead = async (leadData: Partial<Lead>) => {
+    const loadingToast = toast.loading('Creating lead...');
     try {
       await leadApi.create({
         name: leadData.name || '',
@@ -81,23 +129,33 @@ createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new 
         stage: 'New Lead',
       });
          
-      alert('Lead created successfully'); // quick confirm (temporary)
+      toast.success('Lead created successfully', { id: loadingToast });
       await loadLeads();
       setShowAddModal(false);
     } catch (err) {
       console.error('Error creating lead:', err);
-      alert('Failed to create lead');
+      toast.error('Failed to create lead', { id: loadingToast });
     }
   };
 
-  const deleteLead = async (id: string) => {
-    try {
-      await leadApi.delete(id);
-      setLeads(prev => prev.filter(lead => lead.id !== id));
-    } catch (err) {
-      console.error('Error deleting lead:', err);
-      alert('Failed to delete lead');
-    }
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Lead',
+      message: 'Are you sure you want to delete this lead? This action cannot be undone.',
+      onConfirm: async () => {
+        const loadingToast = toast.loading('Deleting lead...');
+        try {
+          await leadApi.delete(id);
+          setLeads(leads.filter(l => l.id !== id));
+          toast.success('Lead deleted successfully', { id: loadingToast });
+        } catch (err) {
+          console.error('Error deleting lead:', err);
+          toast.error('Failed to delete lead', { id: loadingToast });
+        }
+      },
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -227,12 +285,22 @@ createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new 
                     <td className="px-6 py-4 text-gray-400">{lead.createdAt}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <button className="p-2 text-gray-400 hover:text-[#00ff88] transition-colors">
+                        <button 
+                          className="p-2 text-gray-400 hover:text-[#00ff88] transition-colors"
+                        >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteLead(lead.id)}
-                          className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                          onClick={(e) => handleDelete(lead.id, e)}
+                          style={{
+                            padding: '8px',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            color: '#ef4444',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -600,6 +668,16 @@ function BulkImportModal({ onClose, onImport }: BulkImportModalProps) {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+      />
     </div>
   );
 }

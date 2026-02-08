@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lock, Save, CheckCircle, AlertCircle, LogOut, FileText, Image as ImageIcon } from 'lucide-react';
 import { authApi, mediaApi, AuthUser } from '../../services/api';
+import { toast } from 'sonner';
 
 interface UserProfile {
   id: string;
@@ -37,10 +38,11 @@ export function SettingsPage() {
 
   const handleUpdateProfile = async () => {
     if (!profile.name.trim()) {
-      showMessage('error', 'Name is required');
+      toast.error('Name is required');
       return;
     }
     setSaving(true);
+    const loadingToast = toast.loading('Updating profile...');
     try {
       const response = await authApi.updateProfile({
         id: profile.id,
@@ -55,12 +57,12 @@ export function SettingsPage() {
           name: response.user?.name || prev.name,
           signatureHtml: response.user?.signatureHtml || prev.signatureHtml
         }));
-        showMessage('success', 'Profile updated successfully');
+        toast.success('Profile updated successfully', { id: loadingToast });
       } else {
-        showMessage('error', response.message || 'Failed to update profile');
+        toast.error(response.message || 'Failed to update profile', { id: loadingToast });
       }
     } catch (err: any) {
-      showMessage('error', err.message || 'Failed to update profile');
+      toast.error(err.message || 'Failed to update profile', { id: loadingToast });
     } finally {
       setSaving(false);
     }
@@ -70,35 +72,37 @@ export function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const loadingToast = toast.loading('Uploading image...');
     try {
       const { url } = await mediaApi.uploadImage(file);
       const imgHtml = `<img src="${url}" alt="Signature Image" style="max-width: 200px; display: block; margin-top: 10px;" />`;
       setProfile(prev => ({ ...prev, signatureHtml: prev.signatureHtml + imgHtml }));
-      showMessage('success', 'Image uploaded and added to signature');
+      toast.success('Image uploaded and added to signature', { id: loadingToast });
     } catch (err: any) {
-      showMessage('error', 'Failed to upload image: ' + err.message);
+      toast.error('Failed to upload image: ' + err.message, { id: loadingToast });
     }
   };
 
   const handleChangePassword = async () => {
     if (!passwords.current || !passwords.new || !passwords.confirm) {
-      showMessage('error', 'All password fields are required');
+      toast.error('All password fields are required');
       return;
     }
     if (passwords.new.length < 8) {
-      showMessage('error', 'New password must be at least 8 characters');
+      toast.error('New password must be at least 8 characters');
       return;
     }
     if (passwords.new !== passwords.confirm) {
-      showMessage('error', 'New passwords do not match');
+      toast.error('New passwords do not match');
       return;
     }
     setSaving(true);
+    const loadingToast = toast.loading('Changing password...');
     try {
-      showMessage('success', 'Password changed successfully');
+      toast.success('Password changed successfully', { id: loadingToast });
       setPasswords({ current: '', new: '', confirm: '' });
     } catch {
-      showMessage('error', 'Failed to change password');
+      toast.error('Failed to change password', { id: loadingToast });
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserCheck, UserX, Shield, ChevronUp, RefreshCw, AlertCircle, Users, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { adminApi, AdminUser } from '../../services/api';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 export function AdminManagementPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -11,6 +13,20 @@ export function AdminManagementPage() {
     const [rejectModal, setRejectModal] = useState<{ open: boolean; userId: string; userName: string }>({ open: false, userId: '', userName: '' });
     const [rejectReason, setRejectReason] = useState('');
     const [tab, setTab] = useState<'pending' | 'all'>('pending');
+
+    // Confirm dialog state
+    const [confirmDialog, setConfirmDialog] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        variant?: 'danger' | 'warning' | 'info';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {},
+    });
 
     useEffect(() => {
         loadData();
@@ -34,59 +50,73 @@ export function AdminManagementPage() {
     };
 
     const handleApprove = async (userId: string, userName: string) => {
+        const loadingToast = toast.loading(`Approving ${userName}...`);
         try {
             const result = await adminApi.approveUser(userId);
             if (result.success) {
-                setActionMessage(`${userName} has been approved`);
+                toast.success(`${userName} has been approved`, { id: loadingToast });
                 loadData();
-                setTimeout(() => setActionMessage(''), 3000);
             }
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to approve user');
+            toast.error(err instanceof Error ? err.message : 'Failed to approve user', { id: loadingToast });
         }
     };
 
     const handleReject = async () => {
+        const loadingToast = toast.loading(`Rejecting ${rejectModal.userName}...`);
         try {
             const result = await adminApi.rejectUser(rejectModal.userId, rejectReason);
             if (result.success) {
-                setActionMessage(`${rejectModal.userName} has been rejected`);
+                toast.success(`${rejectModal.userName} has been rejected`, { id: loadingToast });
                 setRejectModal({ open: false, userId: '', userName: '' });
                 setRejectReason('');
                 loadData();
-                setTimeout(() => setActionMessage(''), 3000);
             }
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to reject user');
+            toast.error(err instanceof Error ? err.message : 'Failed to reject user', { id: loadingToast });
         }
     };
 
     const handlePromote = async (userId: string, userName: string) => {
-        if (!confirm(`Promote ${userName} to Super Admin? They will have full control.`)) return;
-        try {
-            const result = await adminApi.promoteUser(userId);
-            if (result.success) {
-                setActionMessage(`${userName} is now a Super Admin`);
-                loadData();
-                setTimeout(() => setActionMessage(''), 3000);
-            }
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to promote user');
-        }
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Promote to Super Admin',
+            message: `Promote ${userName} to Super Admin? They will have full control over the system.`,
+            variant: 'warning',
+            onConfirm: async () => {
+                const loadingToast = toast.loading(`Promoting ${userName}...`);
+                try {
+                    const result = await adminApi.promoteUser(userId);
+                    if (result.success) {
+                        toast.success(`${userName} is now a Super Admin`, { id: loadingToast });
+                        loadData();
+                    }
+                } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : 'Failed to promote user', { id: loadingToast });
+                }
+            },
+        });
     };
 
     const handleDemote = async (userId: string, userName: string) => {
-        if (!confirm(`Demote ${userName} to Admin?`)) return;
-        try {
-            const result = await adminApi.demoteUser(userId);
-            if (result.success) {
-                setActionMessage(`${userName} is now an Admin`);
-                loadData();
-                setTimeout(() => setActionMessage(''), 3000);
-            }
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to demote user');
-        }
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Demote to Admin',
+            message: `Demote ${userName} from Super Admin to Admin?`,
+            variant: 'warning',
+            onConfirm: async () => {
+                const loadingToast = toast.loading(`Demoting ${userName}...`);
+                try {
+                    const result = await adminApi.demoteUser(userId);
+                    if (result.success) {
+                        toast.success(`${userName} is now an Admin`, { id: loadingToast });
+                        loadData();
+                    }
+                } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : 'Failed to demote user', { id: loadingToast });
+                }
+            },
+        });
     };
 
     const getStatusBadge = (status: string) => {
@@ -342,6 +372,16 @@ export function AdminManagementPage() {
                     </div>
                 </div>
             )}
+
+            {/* Confirm Dialog */}
+            <ConfirmDialog
+                isOpen={confirmDialog.isOpen}
+                onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                onConfirm={confirmDialog.onConfirm}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                variant={confirmDialog.variant}
+            />
         </div>
     );
 }

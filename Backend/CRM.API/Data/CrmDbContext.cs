@@ -26,6 +26,10 @@ public class CrmDbContext : DbContext
     public DbSet<EmailCampaign> EmailCampaigns { get; set; }
     public DbSet<Meeting> Meetings { get; set; }
     public DbSet<Client> Clients { get; set; }
+    public DbSet<ContactActivity> ContactActivities { get; set; }
+    public DbSet<Invoice> Invoices { get; set; }
+    public DbSet<InvoiceLineItem> InvoiceLineItems { get; set; }
+    public DbSet<Payment> Payments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

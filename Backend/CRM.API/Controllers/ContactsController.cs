@@ -18,9 +18,18 @@ public class ContactsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult> GetAll(
         [FromQuery] string? organisationId = null,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        [FromQuery] string? status = null)
     {
-        var contacts = await _service.GetAllAsync(organisationId, search);
+        var contactsQuery = await _service.GetAllAsync(organisationId, search);
+        
+        // Filter by status if provided
+        if (!string.IsNullOrEmpty(status))
+        {
+            contactsQuery = contactsQuery.Where(c => c.Status == status.ToLower());
+        }
+        
+        var contacts = contactsQuery.ToList();
         return Ok(new { contacts });
     }
 
@@ -53,5 +62,12 @@ public class ContactsController : ControllerBase
         var deleted = await _service.DeleteAsync(id);
         if (!deleted) return NotFound();
         return NoContent();
+    }
+
+    [HttpGet("{id}/activities")]
+    public async Task<ActionResult> GetActivities(string id)
+    {
+        var activities = await _service.GetActivitiesAsync(id);
+        return Ok(new { activities });
     }
 }

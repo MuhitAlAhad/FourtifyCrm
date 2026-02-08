@@ -3,6 +3,7 @@ using System;
 using CRM.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CRM.API.Migrations
 {
     [DbContext(typeof(CrmDbContext))]
-    partial class CrmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260206072931_AddContactActivities")]
+    partial class AddContactActivities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -553,119 +556,6 @@ namespace CRM.API.Migrations
                     b.ToTable("email_templates");
                 });
 
-            modelBuilder.Entity("CRM.API.Models.Invoice", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric")
-                        .HasColumnName("amount");
-
-                    b.Property<string>("ClientId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("client_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<DateTime?>("DueDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("due_date");
-
-                    b.Property<string>("InvoiceNumber")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("invoice_number");
-
-                    b.Property<DateTime>("IssueDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("issue_date");
-
-                    b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<DateTime?>("PaidDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("paid_date");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("status");
-
-                    b.Property<decimal>("Tax")
-                        .HasColumnType("numeric")
-                        .HasColumnName("tax");
-
-                    b.Property<decimal>("TotalAmount")
-                        .HasColumnType("numeric")
-                        .HasColumnName("total_amount");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientId");
-
-                    b.ToTable("invoices");
-                });
-
-            modelBuilder.Entity("CRM.API.Models.InvoiceLineItem", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<string>("InvoiceId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("invoice_id");
-
-                    b.Property<decimal>("Quantity")
-                        .HasColumnType("numeric")
-                        .HasColumnName("quantity");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.Property<decimal>("Total")
-                        .HasColumnType("numeric")
-                        .HasColumnName("total");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("numeric")
-                        .HasColumnName("unit_price");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InvoiceId");
-
-                    b.ToTable("invoice_line_items");
-                });
-
             modelBuilder.Entity("CRM.API.Models.Lead", b =>
                 {
                     b.Property<string>("Id")
@@ -989,61 +879,6 @@ namespace CRM.API.Migrations
                     b.HasIndex("State");
 
                     b.ToTable("organisations");
-                });
-
-            modelBuilder.Entity("CRM.API.Models.Payment", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric")
-                        .HasColumnName("amount");
-
-                    b.Property<string>("ClientId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("client_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("InvoiceId")
-                        .HasColumnType("text")
-                        .HasColumnName("invoice_id");
-
-                    b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<DateTime>("PaymentDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("payment_date");
-
-                    b.Property<string>("PaymentMethod")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("payment_method");
-
-                    b.Property<string>("Reference")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("reference");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientId");
-
-                    b.HasIndex("InvoiceId");
-
-                    b.ToTable("payments");
                 });
 
             modelBuilder.Entity("CRM.API.Models.Proposal", b =>
@@ -1405,28 +1240,6 @@ namespace CRM.API.Migrations
                     b.Navigation("Template");
                 });
 
-            modelBuilder.Entity("CRM.API.Models.Invoice", b =>
-                {
-                    b.HasOne("CRM.API.Models.Client", "Client")
-                        .WithMany()
-                        .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Client");
-                });
-
-            modelBuilder.Entity("CRM.API.Models.InvoiceLineItem", b =>
-                {
-                    b.HasOne("CRM.API.Models.Invoice", "Invoice")
-                        .WithMany("LineItems")
-                        .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Invoice");
-                });
-
             modelBuilder.Entity("CRM.API.Models.Lead", b =>
                 {
                     b.HasOne("CRM.API.Models.Contact", "Contact")
@@ -1488,23 +1301,6 @@ namespace CRM.API.Migrations
                     b.Navigation("Organisation");
                 });
 
-            modelBuilder.Entity("CRM.API.Models.Payment", b =>
-                {
-                    b.HasOne("CRM.API.Models.Client", "Client")
-                        .WithMany()
-                        .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CRM.API.Models.Invoice", "Invoice")
-                        .WithMany()
-                        .HasForeignKey("InvoiceId");
-
-                    b.Navigation("Client");
-
-                    b.Navigation("Invoice");
-                });
-
             modelBuilder.Entity("CRM.API.Models.Proposal", b =>
                 {
                     b.HasOne("CRM.API.Models.Lead", "Lead")
@@ -1546,11 +1342,6 @@ namespace CRM.API.Migrations
             modelBuilder.Entity("CRM.API.Models.EmailCampaign", b =>
                 {
                     b.Navigation("Emails");
-                });
-
-            modelBuilder.Entity("CRM.API.Models.Invoice", b =>
-                {
-                    b.Navigation("LineItems");
                 });
 
             modelBuilder.Entity("CRM.API.Models.Lead", b =>

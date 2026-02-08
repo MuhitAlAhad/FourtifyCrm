@@ -3,6 +3,7 @@ using System;
 using CRM.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CRM.API.Migrations
 {
     [DbContext(typeof(CrmDbContext))]
-    partial class CrmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260206074503_AddInvoicesAndPayments")]
+    partial class AddInvoicesAndPayments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -621,49 +624,6 @@ namespace CRM.API.Migrations
                     b.HasIndex("ClientId");
 
                     b.ToTable("invoices");
-                });
-
-            modelBuilder.Entity("CRM.API.Models.InvoiceLineItem", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<string>("InvoiceId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("invoice_id");
-
-                    b.Property<decimal>("Quantity")
-                        .HasColumnType("numeric")
-                        .HasColumnName("quantity");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.Property<decimal>("Total")
-                        .HasColumnType("numeric")
-                        .HasColumnName("total");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("numeric")
-                        .HasColumnName("unit_price");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InvoiceId");
-
-                    b.ToTable("invoice_line_items");
                 });
 
             modelBuilder.Entity("CRM.API.Models.Lead", b =>
@@ -1416,17 +1376,6 @@ namespace CRM.API.Migrations
                     b.Navigation("Client");
                 });
 
-            modelBuilder.Entity("CRM.API.Models.InvoiceLineItem", b =>
-                {
-                    b.HasOne("CRM.API.Models.Invoice", "Invoice")
-                        .WithMany("LineItems")
-                        .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Invoice");
-                });
-
             modelBuilder.Entity("CRM.API.Models.Lead", b =>
                 {
                     b.HasOne("CRM.API.Models.Contact", "Contact")
@@ -1546,11 +1495,6 @@ namespace CRM.API.Migrations
             modelBuilder.Entity("CRM.API.Models.EmailCampaign", b =>
                 {
                     b.Navigation("Emails");
-                });
-
-            modelBuilder.Entity("CRM.API.Models.Invoice", b =>
-                {
-                    b.Navigation("LineItems");
                 });
 
             modelBuilder.Entity("CRM.API.Models.Lead", b =>

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { TrendingUp, Users, Mail, Activity, AlertCircle, Plus, Calendar, X, Clock, ChevronDown } from 'lucide-react';
 import { QuickActionsPanel } from './QuickActionsPanel';
 import { statsApi, meetingsApi, Meeting, contactApi, Contact } from '../../services/api';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface Stats {
   totalLeads: number;
@@ -34,6 +36,19 @@ export function CRMDashboard({ onNavigate }: CRMDashboardProps) {
   // Contacts for dropdown
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     loadDashboardData();
@@ -95,6 +110,7 @@ export function CRMDashboard({ onNavigate }: CRMDashboardProps) {
     if (!newMeeting.title || !newMeeting.date || !newMeeting.time) return;
 
     setSavingMeeting(true);
+    const loadingToast = toast.loading('Scheduling meeting...');
     try {
       // Combine date and time into ISO datetime
       const meetingDate = new Date(`${newMeeting.date}T${newMeeting.time}`).toISOString();
@@ -109,23 +125,35 @@ export function CRMDashboard({ onNavigate }: CRMDashboardProps) {
       // Reload meetings
       const upcomingMeetings = await meetingsApi.getAll(true);
       setMeetings(upcomingMeetings.slice(0, 5));
-
+      
+      toast.success('Meeting scheduled successfully', { id: loadingToast });
       setNewMeeting({ title: '', date: '', time: '', contactId: '' });
       setShowMeetingModal(false);
     } catch (err) {
       console.error('Error creating meeting:', err);
+      toast.error('Failed to schedule meeting', { id: loadingToast });
     } finally {
       setSavingMeeting(false);
     }
   };
 
-  const handleDeleteMeeting = async (id: string) => {
-    try {
-      await meetingsApi.delete(id);
-      setMeetings(meetings.filter(m => m.id !== id));
-    } catch (err) {
-      console.error('Error deleting meeting:', err);
-    }
+  const handleDeleteMeeting = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Meeting',
+      message: 'Are you sure you want to delete this meeting? This action cannot be undone.',
+      onConfirm: async () => {
+        const loadingToast = toast.loading('Deleting meeting...');
+        try {
+          await meetingsApi.delete(id);
+          setMeetings(meetings.filter(m => m.id !== id));
+          toast.success('Meeting deleted successfully', { id: loadingToast });
+        } catch (err) {
+          console.error('Error deleting meeting:', err);
+          toast.error('Failed to delete meeting', { id: loadingToast });
+        }
+      },
+    });
   };
 
   const handleQuickAction = (action: string) => {
@@ -386,6 +414,16 @@ export function CRMDashboard({ onNavigate }: CRMDashboardProps) {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+      />
     </div>
   );
 }

@@ -18,6 +18,7 @@ public interface IContactService
     Task<Contact> CreateAsync(Contact contact);
     Task<Contact?> UpdateAsync(string id, Contact contact);
     Task<bool> DeleteAsync(string id);
+    Task<IEnumerable<ContactActivity>> GetActivitiesAsync(string contactId);
 }
 
 public interface ILeadService

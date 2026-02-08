@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Building2, Phone, Mail, MapPin, Eye, Trash2, Users, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { organisationApi, contactApi } from '../../services/api';
 import type { Organisation, Contact } from '../../types/crm-data-model';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface ExtendedContact extends Contact {
   organisationId: string;
@@ -19,6 +21,19 @@ export function OrganisationsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -31,7 +46,13 @@ export function OrganisationsPage() {
         organisationApi.getAll(),
         contactApi.getAll(),
       ]);
-      setOrganisations(orgsResponse.organisations);
+      // Sort organisations by creation date descending (newest first)
+      const sortedOrgs = orgsResponse.organisations.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setOrganisations(sortedOrgs);
       setContacts(contactsResponse.contacts as ExtendedContact[]);
     } catch (err) {
       console.error('Error loading data:', err);
@@ -42,26 +63,36 @@ export function OrganisationsPage() {
   };
 
   const addOrganisation = async (orgData: Partial<Organisation>) => {
+    const loadingToast = toast.loading('Creating organisation...');
     try {
       const newOrg = await organisationApi.create(orgData);
-      setOrganisations(prev => [...prev, newOrg]);
+      setOrganisations(prev => [newOrg, ...prev]);
+      toast.success('Organisation created successfully', { id: loadingToast });
       setShowAddModal(false);
     } catch (err) {
       console.error('Error creating organisation:', err);
-      alert('Failed to create organisation');
+      toast.error('Failed to create organisation', { id: loadingToast });
     }
   };
 
   const deleteOrganisation = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this organisation?')) return;
-    try {
-      await organisationApi.delete(id);
-      setOrganisations(prev => prev.filter(o => o.id !== id));
-      setContacts(prev => prev.filter(c => c.organisationId !== id));
-    } catch (err) {
-      console.error('Error deleting organisation:', err);
-      alert('Failed to delete organisation');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Organisation',
+      message: 'Are you sure you want to delete this organisation? This action cannot be undone and will also remove all associated contacts.',
+      onConfirm: async () => {
+        const loadingToast = toast.loading('Deleting organisation...');
+        try {
+          await organisationApi.delete(id);
+          setOrganisations(prev => prev.filter(o => o.id !== id));
+          setContacts(prev => prev.filter(c => c.organisationId !== id));
+          toast.success('Organisation deleted successfully', { id: loadingToast });
+        } catch (err) {
+          console.error('Error deleting organisation:', err);
+          toast.error('Failed to delete organisation', { id: loadingToast });
+        }
+      },
+    });
   };
 
   const getOrgContacts = (orgId: string) => contacts.filter(c => c.organisationId === orgId);
@@ -246,13 +277,23 @@ export function OrganisationsPage() {
       {showAddModal && <AddOrganisationModal onClose={() => setShowAddModal(false)} onAdd={addOrganisation} />}
 
       {/* Detail Modal */}
-      {showDetailModal && selectedOrg && (
+      {showDetailModal &&selectedOrg && (
         <OrganisationDetailModal
           organisation={selectedOrg}
           contacts={getOrgContacts(selectedOrg.id)}
           onClose={() => { setShowDetailModal(false); setSelectedOrg(null); }}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+      />
     </div>
   );
 }
@@ -393,6 +434,27 @@ function OrganisationDetailModal({ organisation, contacts, onClose }: { organisa
                     <div>
                       <div style={{ color: 'white', fontSize: '16px', fontWeight: '500' }}>{c.firstName} {c.lastName}</div>
                       <div style={{ color: '#6b7280', fontSize: '14px' }}>{c.jobTitle || 'No title'}</div>
+                      <span style={{
+                        display: 'inline-block',
+                        marginTop: '4px',
+                        padding: '2px 8px',
+                        backgroundColor: 
+                          c.status === 'converted' ? 'rgba(139, 92, 246, 0.2)' :
+                          c.status === 'qualified' ? 'rgba(59, 130, 246, 0.2)' :
+                          c.status === 'contacted' ? 'rgba(234, 179, 8, 0.2)' :
+                          'rgba(107, 114, 128, 0.2)',
+                        color: 
+                          c.status === 'converted' ? '#a78bfa' :
+                          c.status === 'qualified' ? '#3b82f6' :
+                          c.status === 'contacted' ? '#eab308' :
+                          '#9ca3af',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontWeight: '500',
+                        textTransform: 'capitalize',
+                      }}>
+                        {c.status || 'new'}
+                      </span>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
