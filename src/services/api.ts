@@ -19,7 +19,22 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
         throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
 
-    return response.json();
+    if (response.status === 204) {
+        return undefined as T;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const text = await response.text();
+
+    if (!text) {
+        return undefined as T;
+    }
+
+    if (!contentType.includes('application/json')) {
+        return text as unknown as T;
+    }
+
+    return JSON.parse(text) as T;
 }
 
 // Types (matching backend models)

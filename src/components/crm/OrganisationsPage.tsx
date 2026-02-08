@@ -173,12 +173,12 @@ export function OrganisationsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: '#1a2332' }}>
-              <th style={{ padding: '16px 24px', textAlign: 'left', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Organisation</th>
-              <th style={{ padding: '16px 24px', textAlign: 'left', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>ABN</th>
-              <th style={{ padding: '16px 24px', textAlign: 'left', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>State</th>
-              <th style={{ padding: '16px 24px', textAlign: 'center', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Status</th>
-              <th style={{ padding: '16px 24px', textAlign: 'center', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Contacts</th>
-              <th style={{ padding: '16px 24px', textAlign: 'center', color: '#9ca3af', fontSize: '16px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Actions</th>
+              <th style={{ padding: '14px 20px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Organisation</th>
+              <th style={{ padding: '14px 20px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>ABN</th>
+              <th style={{ padding: '14px 20px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>State</th>
+              <th style={{ padding: '14px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Status</th>
+              <th style={{ padding: '14px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Contacts</th>
+              <th style={{ padding: '14px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -193,42 +193,42 @@ export function OrganisationsPage() {
             ) : paginatedOrgs.length > 0 ? (
               paginatedOrgs.map((org) => (
                 <tr key={org.id} style={{ borderBottom: '1px solid #1a2332' }}>
-                  <td style={{ padding: '20px 24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ width: '48px', height: '48px', backgroundColor: 'rgba(0, 255, 136, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Building2 size={24} color="#00ff88" />
+                  <td style={{ padding: '16px 20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '40px', height: '40px', backgroundColor: 'rgba(0, 255, 136, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Building2 size={20} color="#00ff88" />
                       </div>
                       <div>
-                        <div style={{ color: 'white', fontSize: '18px', fontWeight: '500' }}>{org.name}</div>
-                        <div style={{ color: '#6b7280', fontSize: '14px' }}>{org.industry || '—'}</div>
+                        <div style={{ color: 'white', fontSize: '16px', fontWeight: '500' }}>{org.name}</div>
+                        <div style={{ color: '#6b7280', fontSize: '12px' }}>{org.industry || '—'}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '20px 24px', color: '#d1d5db', fontSize: '16px', fontFamily: 'monospace' }}>{org.abn || '—'}</td>
-                  <td style={{ padding: '20px 24px', color: '#d1d5db', fontSize: '16px' }}>{org.state || '—'}</td>
-                  <td style={{ padding: '20px 24px', textAlign: 'center' }}>
-                    <span style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '14px', textTransform: 'capitalize', ...getStatusStyle(org.status || 'prospect') }}>
+                  <td style={{ padding: '16px 20px', color: '#d1d5db', fontSize: '14px', fontFamily: 'monospace' }}>{org.abn || '—'}</td>
+                  <td style={{ padding: '16px 20px', color: '#d1d5db', fontSize: '14px' }}>{org.state || '—'}</td>
+                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>
+                    <span style={{ padding: '6px 12px', borderRadius: '16px', fontSize: '12px', textTransform: 'capitalize', ...getStatusStyle(org.status || 'prospect') }}>
                       {org.status || 'prospect'}
                     </span>
                   </td>
-                  <td style={{ padding: '20px 24px', textAlign: 'center' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', borderRadius: '20px', fontSize: '16px' }}>
-                      <Users size={20} /> {getOrgContacts(org.id).length}
+                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', borderRadius: '16px', fontSize: '14px' }}>
+                      <Users size={16} /> {getOrgContacts(org.id).length}
                     </span>
                   </td>
-                  <td style={{ padding: '20px 24px', textAlign: 'center' }}>
+                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                       <button
                         onClick={() => { setSelectedOrg(org); setShowDetailModal(true); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
                       >
-                        <Eye size={20} /> View
+                        <Eye size={14} /> View
                       </button>
                       <button
                         onClick={() => deleteOrganisation(org.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
                       >
-                        <Trash2 size={20} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>

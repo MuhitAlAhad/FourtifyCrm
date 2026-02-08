@@ -5,20 +5,22 @@ import api from '../../services/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 
+type ClientRow = Client & { sourceType?: 'client' | 'contact' };
+
 export function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [organisations, setOrganisations] = useState<{ id: string; name: string }[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
   
   // Financial management state
   const [showFinancialModal, setShowFinancialModal] = useState(false);
   const [showGlobalFinancialModal, setShowGlobalFinancialModal] = useState(false);
-  const [selectedClientForFinance, setSelectedClientForFinance] = useState<Client | null>(null);
+  const [selectedClientForFinance, setSelectedClientForFinance] = useState<ClientRow | null>(null);
   const [financialTab, setFinancialTab] = useState<'invoices' | 'payments' | 'stats'>('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -86,7 +88,10 @@ export function ClientsPage() {
         api.organisations.getAll()
       ]);
       
-      const actualClients = clientsResponse.clients || [];
+      const actualClients = (clientsResponse.clients || []).map((client: Client) => ({
+        ...client,
+        sourceType: 'client' as const,
+      }));
       const allContacts = contactsResponse.contacts || [];
       const allOrgs = orgsResponse.organisations || [];
       
@@ -94,7 +99,7 @@ export function ClientsPage() {
       setContacts(allContacts);
       
       // Filter contacts with status "converted" and map them to Client format
-      const convertedContacts = allContacts
+      const convertedContacts: ClientRow[] = allContacts
         .filter((contact: any) => contact.status === 'converted')
         .map((contact: any) => {
           const org = allOrgs.find((o: any) => o.id === contact.organisationId);
@@ -109,6 +114,7 @@ export function ClientsPage() {
             notes: `Converted contact: ${contact.firstName} ${contact.lastName}${contact.notes ? ' - ' + contact.notes : ''}`,
             createdAt: contact.createdAt || new Date().toISOString(),
             updatedAt: contact.updatedAt || new Date().toISOString(),
+            sourceType: 'contact' as const,
           };
         });
       
@@ -167,7 +173,7 @@ export function ClientsPage() {
     }
   };
 
-  const handleEdit = (client: Client) => {
+  const handleEdit = (client: ClientRow) => {
     setEditingClient(client);
     setFormData({
       organisationId: client.organisationId,
@@ -182,7 +188,7 @@ export function ClientsPage() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (client: ClientRow) => {
     setConfirmDialog({
       isOpen: true,
       title: 'Delete Client',
@@ -191,9 +197,13 @@ export function ClientsPage() {
       onConfirm: async () => {
         const loadingToast = toast.loading('Deleting client...');
         try {
-          await clientApi.delete(id);
+          if (client.sourceType === 'contact') {
+            await contactApi.delete(client.id);
+          } else {
+            await clientApi.delete(client.id);
+          }
           toast.success('Client deleted successfully', { id: loadingToast });
-          loadClients();
+          await loadClients();
         } catch (error) {
           console.error('Failed to delete client:', error);
           toast.error('Failed to delete client', { id: loadingToast });
@@ -214,7 +224,7 @@ export function ClientsPage() {
   };
 
   // Financial management functions
-  const openFinancialModal = async (client: Client) => {
+  const openFinancialModal = async (client: ClientRow) => {
     // Clear previous data first
     setInvoices([]);
     setPayments([]);
@@ -615,7 +625,7 @@ export function ClientsPage() {
                       <button onClick={() => handleEdit(client)} className="p-2 text-gray-400 hover:text-white">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDelete(client.id)} className="p-2 text-gray-400 hover:text-red-400">
+                      <button onClick={() => handleDelete(client)} className="p-2 text-gray-400 hover:text-red-400">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>

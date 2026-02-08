@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, Trash2, CheckCircle, Info } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -23,6 +24,8 @@ export function ConfirmDialog({
   variant = 'danger'
 }: ConfirmDialogProps) {
   if (!isOpen) return null;
+
+  if (typeof document === 'undefined') return null;
 
   const variantStyles = {
     danger: {
@@ -58,7 +61,7 @@ export function ConfirmDialog({
   const style = variantStyles[variant];
   const Icon = style.icon;
 
-  return (
+  const dialog = (
     <div
       style={{
         position: 'fixed',
@@ -202,4 +205,6 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }

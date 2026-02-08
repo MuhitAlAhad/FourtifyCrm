@@ -15,6 +15,7 @@ interface Lead {
   supplierName: string;
   createdAt: string;
   lastContact?: string;
+  sourceType?: 'lead' | 'contact';
 }
 
 export function LeadsPage() {
@@ -23,6 +24,7 @@ export function LeadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkImportModal, setShowBulkImportModal] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
@@ -74,6 +76,7 @@ export function LeadsPage() {
             source: 'Contact Form',
             supplierName: '',
             createdAt: contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+            sourceType: 'contact',
           };
         });
       
@@ -93,6 +96,7 @@ export function LeadsPage() {
           source: lead.source ?? '',
           supplierName: lead.supplierName ?? lead.owner ?? '',
           createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+          sourceType: 'lead',
         };
       });
       
@@ -119,6 +123,13 @@ export function LeadsPage() {
     return 'contacted';
   };
 
+  const mapStatusToStage = (status: Lead['status']): string => {
+    if (status === 'new') return 'New Lead';
+    if (status === 'qualified') return 'Qualified Lead';
+    if (status === 'converted') return 'Closed Won';
+    return 'Contacted Lead';
+  };
+
   const addLead = async (leadData: Partial<Lead>) => {
     const loadingToast = toast.loading('Creating lead...');
     try {
@@ -138,8 +149,7 @@ export function LeadsPage() {
     }
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = async (lead: Lead) => {
     setConfirmDialog({
       isOpen: true,
       title: 'Delete Lead',
@@ -147,8 +157,12 @@ export function LeadsPage() {
       onConfirm: async () => {
         const loadingToast = toast.loading('Deleting lead...');
         try {
-          await leadApi.delete(id);
-          setLeads(leads.filter(l => l.id !== id));
+          if (lead.sourceType === 'contact') {
+            await contactApi.delete(lead.id);
+          } else {
+            await leadApi.delete(lead.id);
+          }
+          await loadLeads();
           toast.success('Lead deleted successfully', { id: loadingToast });
         } catch (err) {
           console.error('Error deleting lead:', err);
@@ -156,6 +170,42 @@ export function LeadsPage() {
         }
       },
     });
+  };
+
+  const handleEdit = (lead: Lead) => {
+    setEditingLead(lead);
+  };
+
+  const updateLead = async (leadData: Partial<Lead>) => {
+    if (!editingLead) return;
+    if (editingLead.sourceType === 'contact') {
+      toast.error('Editing contact-based leads is not supported yet');
+      return;
+    }
+
+    const loadingToast = toast.loading('Updating lead...');
+    try {
+      await leadApi.update(editingLead.id, {
+        name: leadData.name || editingLead.name,
+        source: leadData.source || editingLead.source,
+        owner: leadData.supplierName || editingLead.supplierName,
+        stage: mapStatusToStage(leadData.status || editingLead.status),
+      });
+
+      setLeads(prev => prev.map(lead => {
+        if (lead.id !== editingLead.id) return lead;
+        return {
+          ...lead,
+          ...leadData,
+        } as Lead;
+      }));
+
+      toast.success('Lead updated successfully', { id: loadingToast });
+      setEditingLead(null);
+    } catch (err) {
+      console.error('Error updating lead:', err);
+      toast.error('Failed to update lead', { id: loadingToast });
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -286,12 +336,15 @@ export function LeadsPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <button 
+                          type="button"
+                          onClick={() => handleEdit(lead)}
                           className="p-2 text-gray-400 hover:text-[#00ff88] transition-colors"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={(e) => handleDelete(lead.id, e)}
+                          type="button"
+                          onClick={() => handleDelete(lead)}
                           style={{
                             padding: '8px',
                             backgroundColor: 'rgba(239, 68, 68, 0.1)',
@@ -322,9 +375,22 @@ export function LeadsPage() {
 
       {/* Add Lead Modal */}
       {showAddModal && (
-        <AddLeadModal
+        <LeadModal
           onClose={() => setShowAddModal(false)}
-          onAdd={addLead}
+          onSubmit={addLead}
+          title="Add New Lead"
+          submitText="Add Lead"
+        />
+      )}
+
+      {/* Edit Lead Modal */}
+      {editingLead && (
+        <LeadModal
+          onClose={() => setEditingLead(null)}
+          onSubmit={updateLead}
+          initialData={editingLead}
+          title="Edit Lead"
+          submitText="Save Changes"
         />
       )}
 
@@ -338,39 +404,74 @@ export function LeadsPage() {
           }}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+      />
     </div>
   );
 }
 
-interface AddLeadModalProps {
+interface LeadModalProps {
   onClose: () => void;
-  onAdd: (data: Partial<Lead>) => void;
+  onSubmit: (data: Partial<Lead>) => void;
+  initialData?: Partial<Lead>;
+  title?: string;
+  submitText?: string;
 }
 
-function AddLeadModal({ onClose, onAdd }: AddLeadModalProps) {
+function LeadModal({
+  onClose,
+  onSubmit,
+  initialData,
+  title = 'Add New Lead',
+  submitText = 'Add Lead',
+}: LeadModalProps) {
   const [formData, setFormData] = useState({
-    name: '',
-    company: '',
-    email: '',
-    phone: '',
-    status: 'new' as Lead['status'],
-    source: '',
-    supplierName: '',
+    name: initialData?.name || '',
+    company: initialData?.company || '',
+    email: initialData?.email || '',
+    phone: initialData?.phone || '',
+    status: (initialData?.status || 'new') as Lead['status'],
+    source: initialData?.source || '',
+    supplierName: initialData?.supplierName || '',
   });
+
+  useEffect(() => {
+    if (!initialData) return;
+    setFormData({
+      name: initialData.name || '',
+      company: initialData.company || '',
+      email: initialData.email || '',
+      phone: initialData.phone || '',
+      status: (initialData.status || 'new') as Lead['status'],
+      source: initialData.source || '',
+      supplierName: initialData.supplierName || '',
+    });
+  }, [initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAdd({
-      ...formData,
-      id: `lead-${Date.now()}`,
-      createdAt: new Date().toLocaleDateString(),
-    });
+    const payload = initialData
+      ? { ...formData }
+      : {
+          ...formData,
+          id: `lead-${Date.now()}`,
+          createdAt: new Date().toLocaleDateString(),
+        };
+    onSubmit(payload);
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl p-6 max-w-md w-full">
-        <h2 className="text-2xl text-white mb-6">Add New Lead</h2>
+        <h2 className="text-2xl text-white mb-6">{title}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-2">Name</label>
@@ -449,7 +550,7 @@ function AddLeadModal({ onClose, onAdd }: AddLeadModalProps) {
               type="submit"
               className="flex-1 px-4 py-3 bg-[#00ff88] text-[#0a0f1a] rounded-lg hover:bg-[#00cc6a] transition-colors"
             >
-              Add Lead
+              {submitText}
             </button>
           </div>
         </form>
@@ -669,15 +770,6 @@ function BulkImportModal({ onClose, onImport }: BulkImportModalProps) {
         </div>
       )}
 
-      {/* Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
-        onConfirm={confirmDialog.onConfirm}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        variant="danger"
-      />
     </div>
   );
 }
