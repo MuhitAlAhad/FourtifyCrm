@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Shield, Building2, DollarSign, Calendar, Plus, X, Edit2, Trash2, FileText, CreditCard, Receipt, Filter } from 'lucide-react';
+import { Search, Shield, Building2, DollarSign, Calendar, Plus, X, Edit2, Trash2, FileText, CreditCard, Receipt, Filter, Mail, RefreshCw } from 'lucide-react';
 import { clientApi, Client, CreateClientRequest, contactApi, invoiceApi, paymentApi, Invoice, Payment, CreateInvoiceRequest, CreatePaymentRequest, InvoiceLineItem } from '../../services/api';
 import api from '../../services/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import logo from '../../assets/35f931b802bf39733103d00f96fb6f9c21293f6e.png';
 
 type ClientRow = Client & { sourceType?: 'client' | 'contact' };
 
@@ -21,6 +22,7 @@ export function ClientsPage() {
   const [showFinancialModal, setShowFinancialModal] = useState(false);
   const [showGlobalFinancialModal, setShowGlobalFinancialModal] = useState(false);
   const [selectedClientForFinance, setSelectedClientForFinance] = useState<ClientRow | null>(null);
+  const [actualClientIdForFinance, setActualClientIdForFinance] = useState<string | null>(null);
   const [financialTab, setFinancialTab] = useState<'invoices' | 'payments' | 'stats'>('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -55,7 +57,7 @@ export function ClientsPage() {
   const [formData, setFormData] = useState<CreateClientRequest>({
     organisationId: '',
     plan: 'Professional',
-    status: 'onboarded',
+    status: 'onboarding',
     mrr: 0,
     dispCompliant: false,
     notes: '',
@@ -65,8 +67,8 @@ export function ClientsPage() {
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
-    onConfirm: () => void;
+    message: string | React.ReactNode;
+    onConfirm: () => void | Promise<void>;
     variant?: 'danger' | 'warning' | 'info' | 'success';
   }>({
     isOpen: false,
@@ -99,16 +101,23 @@ export function ClientsPage() {
       setContacts(allContacts);
       
       // Filter contacts with status "converted" and map them to Client format
+      // ONLY include converted contacts if there's NO real client for that organization yet
       const convertedContacts: ClientRow[] = allContacts
-        .filter((contact: any) => contact.status === 'converted')
+        .filter((contact: any) => {
+          if (contact.status !== 'converted') return false;
+          // Check if a real client already exists for this organization
+          const hasRealClient = actualClients.some((c: ClientRow) => c.organisationId === contact.organisationId);
+          return !hasRealClient; // Only include if there's NO real client
+        })
         .map((contact: any) => {
           const org = allOrgs.find((o: any) => o.id === contact.organisationId);
+          
           return {
             id: contact.id,
             organisationId: contact.organisationId || '',
             organisationName: org?.name || 'Unknown',
             plan: 'N/A',
-            status: 'onboarded' as const,
+            status: 'onboarding' as const,
             mrr: 0,
             dispCompliant: false,
             notes: `Converted contact: ${contact.firstName} ${contact.lastName}${contact.notes ? ' - ' + contact.notes : ''}`,
@@ -188,25 +197,99 @@ export function ClientsPage() {
     setShowModal(true);
   };
 
+  const handleUpdateMrr = async (client: ClientRow) => {
+    if (client.sourceType === 'contact') {
+      toast.error('Cannot calculate MRR for converted contacts');
+      return;
+    }
+    
+    const loadingToast = toast.loading('Calculating MRR from invoices...');
+    try {
+      const updated = await clientApi.updateMrrFromInvoices(client.id);
+      toast.success(`MRR updated to $${updated.mrr.toFixed(2)}`, { id: loadingToast });
+      await loadClients();
+    } catch (error) {
+      console.error('Failed to update MRR:', error);
+      toast.error('Failed to update MRR. Make sure this client has paid invoices.', { id: loadingToast });
+    }
+  };
+
   const handleDelete = async (client: ClientRow) => {
     setConfirmDialog({
       isOpen: true,
       title: 'Delete Client',
-      message: 'Are you sure you want to delete this client? This action cannot be undone.',
+      message: (
+        <div>
+          <p style={{ marginBottom: '16px' }}>
+            Are you sure you want to delete <strong style={{ color: '#00ff88' }}>{client.name}</strong>?
+          </p>
+          <p style={{ marginBottom: '12px', fontWeight: '600', color: '#ef4444' }}>
+            This will permanently delete:
+          </p>
+          <ul style={{ listStyle: 'none', padding: 0, marginBottom: '16px' }}>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#ef4444' }}>✕</span>
+              The client record
+            </li>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#ef4444' }}>✕</span>
+              All invoices for this client
+            </li>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#ef4444' }}>✕</span>
+              All payments for this client
+            </li>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#ef4444' }}>✕</span>
+              All invoice line items
+            </li>
+          </ul>
+          <p style={{ marginBottom: '12px', fontWeight: '600', color: '#00ff88' }}>
+            Will be preserved:
+          </p>
+          <ul style={{ listStyle: 'none', padding: 0, marginBottom: '16px' }}>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#00ff88' }}>✓</span>
+              Organization record
+            </li>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#00ff88' }}>✓</span>
+              Contacts
+            </li>
+            <li style={{ marginBottom: '8px', paddingLeft: '20px', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#00ff88' }}>✓</span>
+              Meetings
+            </li>
+          </ul>
+          <p style={{ fontWeight: '600', color: '#f59e0b' }}>
+            ⚠️ This action cannot be undone.
+          </p>
+        </div>
+      ),
       variant: 'danger',
       onConfirm: async () => {
-        const loadingToast = toast.loading('Deleting client...');
+        const loadingToast = toast.loading('Deleting client and related records...');
         try {
           if (client.sourceType === 'contact') {
             await contactApi.delete(client.id);
+            toast.success('Contact deleted successfully', { id: loadingToast });
           } else {
-            await clientApi.delete(client.id);
+            const response = await clientApi.delete(client.id);
+            // The backend returns details about what was deleted
+            const details = response as any;
+            if (details?.deletedInvoices || details?.deletedPayments) {
+              toast.success(
+                `Client deleted successfully. Removed ${details.deletedInvoices || 0} invoices and ${details.deletedPayments || 0} payments.`,
+                { id: loadingToast, duration: 5000 }
+              );
+            } else {
+              toast.success('Client deleted successfully', { id: loadingToast });
+            }
           }
-          toast.success('Client deleted successfully', { id: loadingToast });
           await loadClients();
         } catch (error) {
           console.error('Failed to delete client:', error);
-          toast.error('Failed to delete client', { id: loadingToast });
+          toast.error('Failed to delete client. Please try again.', { id: loadingToast });
         }
       },
     });
@@ -216,7 +299,7 @@ export function ClientsPage() {
     setFormData({
       organisationId: '',
       plan: 'Professional',
-      status: 'onboarded',
+      status: 'onboarding',
       mrr: 0,
       dispCompliant: false,
       notes: '',
@@ -231,14 +314,43 @@ export function ClientsPage() {
     setInvoiceSearchQuery('');
     setInvoiceStatusFilter('all');
     
+    console.log('Opening financial modal for client:', { 
+      id: client.id, 
+      name: client.name, 
+      email: client.email,
+      organisationId: client.organisationId,
+      sourceType: client.sourceType
+    });
+    
     setSelectedClientForFinance(client);
     setShowFinancialModal(true);
-    await loadClientFinancials(client.id);
+    
+    // If this is a converted contact, find the actual client ID
+    let actualClientId = client.id;
+    if (client.sourceType === 'contact') {
+      try {
+        const allClientsResponse = await clientApi.getAll();
+        const existingClient = allClientsResponse.clients.find(
+          (c: Client) => c.organisationId === client.organisationId
+        );
+        if (existingClient) {
+          actualClientId = existingClient.id;
+          console.log('Found actual client ID for converted contact:', actualClientId);
+        }
+      } catch (error) {
+        console.error('Failed to find client for contact:', error);
+      }
+    }
+    
+    console.log('Using clientId for financials:', actualClientId);
+    setActualClientIdForFinance(actualClientId);
+    await loadClientFinancials(actualClientId);
   };
   
   const closeFinancialModal = () => {
     setShowFinancialModal(false);
     setSelectedClientForFinance(null);
+    setActualClientIdForFinance(null);
     setInvoices([]);
     setPayments([]);
     setInvoiceSearchQuery('');
@@ -260,10 +372,13 @@ export function ClientsPage() {
 
   const loadClientFinancials = async (clientId: string) => {
     try {
+      console.log('Loading financials for clientId:', clientId);
       const [invoicesRes, paymentsRes] = await Promise.all([
         invoiceApi.getAll(clientId),
         paymentApi.getAll(clientId),
       ]);
+      console.log('Loaded invoices:', invoicesRes.invoices);
+      console.log('Invoice ClientIds:', invoicesRes.invoices?.map(i => ({ invoiceNumber: i.invoiceNumber, clientId: i.clientId, clientName: i.clientName })));
       setInvoices(invoicesRes.invoices || []);
       setPayments(paymentsRes.payments || []);
     } catch (error) {
@@ -286,28 +401,83 @@ export function ClientsPage() {
 
   const handleInvoiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const loadingToast = toast.loading(editingInvoice ? 'Updating invoice...' : 'Creating invoice...');
+    const loadingToast = toast.loading(editingInvoice ? 'Updating invoice...' : 'Creating invoice and sending to client...');
     try {
+      let actualClientId = invoiceForm.clientId;
+      
+      // If selectedClientForFinance is a contact, we need to create/find a client record first
+      if (selectedClientForFinance && selectedClientForFinance.sourceType === 'contact') {
+        // Check if a client already exists for this organization
+        const allClientsResponse = await clientApi.getAll();
+        const existingClient = allClientsResponse.clients.find(
+          (c: Client) => c.organisationId === selectedClientForFinance.organisationId
+        );
+        
+        if (existingClient) {
+          actualClientId = existingClient.id;
+        } else {
+          // Create a new client record for this organization
+          const newClient = await clientApi.create({
+            organisationId: selectedClientForFinance.organisationId,
+            plan: 'Standard',
+            status: 'active',
+            mrr: 0,
+            dispCompliant: false,
+          });
+          actualClientId = newClient.id;
+        }
+      }
+      
       // Calculate totals from line items
       const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-      const invoiceData = {
+      const taxPercentage = invoiceForm.tax || 0;
+      const taxAmount = (subtotal * taxPercentage) / 100;
+      
+      const invoiceData: any = {
         ...invoiceForm,
+        clientId: actualClientId, // Use the actual client ID
         amount: subtotal,
+        tax: taxAmount,
         lineItems: lineItems.filter(item => item.description.trim() !== ''),
       };
+      
+      // Ensure dates are in proper ISO format or undefined (not empty strings)
+      if (!invoiceData.issueDate) {
+        invoiceData.issueDate = new Date().toISOString();
+      } else if (!invoiceData.issueDate.includes('T')) {
+        invoiceData.issueDate = new Date(invoiceData.issueDate).toISOString();
+      }
+      
+      if (!invoiceData.dueDate || invoiceData.dueDate === '') {
+        delete invoiceData.dueDate; // Remove empty dueDate
+      } else if (!invoiceData.dueDate.includes('T')) {
+        invoiceData.dueDate = new Date(invoiceData.dueDate).toISOString();
+      }
+      
+      console.log('Sending invoice data:', invoiceData);
       
       if (editingInvoice) {
         await invoiceApi.update(editingInvoice.id, invoiceData);
         toast.success('Invoice updated successfully', { id: loadingToast });
       } else {
-        await invoiceApi.create(invoiceData);
-        toast.success('Invoice created successfully', { id: loadingToast });
+        // Create invoice
+        const createdInvoice = await invoiceApi.create(invoiceData);
+        
+        // Send invoice email
+        try {
+          const sendResult = await invoiceApi.send(createdInvoice.id);
+          toast.success(`Invoice created and sent to ${sendResult.sentTo}`, { id: loadingToast });
+        } catch (emailError) {
+          console.error('Failed to send invoice email:', emailError);
+          toast.warning('Invoice created but failed to send email', { id: loadingToast });
+        }
       }
+      
       setShowInvoiceModal(false);
       setEditingInvoice(null);
       resetInvoiceForm();
-      if (selectedClientForFinance) {
-        await loadClientFinancials(selectedClientForFinance.id);
+      if (actualClientIdForFinance) {
+        await loadClientFinancials(actualClientIdForFinance);
       }
     } catch (error) {
       console.error('Failed to save invoice:', error);
@@ -340,6 +510,17 @@ export function ClientsPage() {
     const newLineItems = [...lineItems];
     newLineItems[index] = { ...newLineItems[index], [field]: value };
     
+    // Auto-populate price based on description selection
+    if (field === 'description') {
+      if (value === 'Fourtify Professional') {
+        newLineItems[index].unitPrice = 2099;
+        newLineItems[index].total = newLineItems[index].quantity * 2099;
+      } else if (value === 'Enterprise Solution') {
+        newLineItems[index].unitPrice = 900;
+        newLineItems[index].total = newLineItems[index].quantity * 900;
+      }
+    }
+    
     // Recalculate total for this line item
     if (field === 'quantity' || field === 'unitPrice') {
       newLineItems[index].total = newLineItems[index].quantity * newLineItems[index].unitPrice;
@@ -350,7 +531,8 @@ export function ClientsPage() {
   
   const calculateInvoiceTotals = () => {
     const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-    const tax = invoiceForm.tax || 0;
+    const taxPercentage = invoiceForm.tax || 0;
+    const tax = (subtotal * taxPercentage) / 100;
     const total = subtotal + tax;
     return { subtotal, tax, total };
   };
@@ -385,8 +567,8 @@ export function ClientsPage() {
       }
       setShowPaymentModal(false);
       setEditingPayment(null);
-      if (selectedClientForFinance) {
-        await loadClientFinancials(selectedClientForFinance.id);
+      if (actualClientIdForFinance) {
+        await loadClientFinancials(actualClientIdForFinance);
       }
     } catch (error) {
       console.error('Failed to save payment:', error);
@@ -405,8 +587,8 @@ export function ClientsPage() {
         try {
           await invoiceApi.delete(id);
           toast.success('Invoice deleted successfully', { id: loadingToast });
-          if (selectedClientForFinance) {
-            await loadClientFinancials(selectedClientForFinance.id);
+          if (actualClientIdForFinance) {
+            await loadClientFinancials(actualClientIdForFinance);
           }
         } catch (error) {
           console.error('Failed to delete invoice:', error);
@@ -427,8 +609,8 @@ export function ClientsPage() {
         try {
           await paymentApi.delete(id);
           toast.success('Payment deleted successfully', { id: loadingToast });
-          if (selectedClientForFinance) {
-            await loadClientFinancials(selectedClientForFinance.id);
+          if (actualClientIdForFinance) {
+            await loadClientFinancials(actualClientIdForFinance);
           }
         } catch (error) {
           console.error('Failed to delete payment:', error);
@@ -473,7 +655,7 @@ export function ClientsPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl text-white mb-2">Client Management</h1>
-          <p className="text-gray-400">Manage your defence industry clients</p>
+          <p className="text-gray-300">Manage your clients and organizations</p>
         </div>
         <button
           onClick={() => { resetForm(); setEditingClient(null); setShowModal(true); }}
@@ -622,6 +804,15 @@ export function ClientsPage() {
                       >
                         <DollarSign className="w-4 h-4" />
                       </button>
+                      {client.sourceType !== 'contact' && (
+                        <button 
+                          onClick={() => handleUpdateMrr(client)} 
+                          className="p-2 text-gray-400 hover:text-[#00ff88]"
+                          title="Update MRR from Invoices"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      )}
                       <button onClick={() => handleEdit(client)} className="p-2 text-gray-400 hover:text-white">
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -684,7 +875,7 @@ export function ClientsPage() {
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     className="w-full bg-[#1a2332] border border-[#2a3442] rounded-lg px-4 py-2 text-white"
                   >
-                    <option value="onboarded">Onboarded</option>
+                    <option value="onboarding">Onboarding</option>
                     <option value="active">Active</option>
                     <option value="churned">Churned</option>
                   </select>
@@ -761,8 +952,9 @@ export function ClientsPage() {
 
       {/* Financial Management Modal */}
       {showFinancialModal && selectedClientForFinance && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4">
-          <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[100] overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) closeFinancialModal(); }}>
+          <div className="min-h-screen w-full flex items-center justify-center p-4">
+            <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl w-full max-w-6xl my-8 flex flex-col shadow-2xl">
             <div className="flex justify-between items-center p-6 border-b border-[#1a2332]">
               <div>
                 <h2 className="text-2xl text-white">{selectedClientForFinance.organisationName} - Financial Management</h2>
@@ -829,7 +1021,7 @@ export function ClientsPage() {
                     <button
                       onClick={() => {
                         setInvoiceForm({
-                          clientId: selectedClientForFinance.id,
+                          clientId: actualClientIdForFinance || '',
                           invoiceNumber: `INV-${Date.now()}`,
                           description: '',
                           amount: 0,
@@ -994,6 +1186,25 @@ export function ClientsPage() {
                             {/* Actions */}
                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
+                                onClick={async () => {
+                                  const sendToast = toast.loading('Sending invoice...');
+                                  try {
+                                    const result = await invoiceApi.send(invoice.id);
+                                    toast.success(`Invoice sent to ${result.sentTo}`, { id: sendToast });
+                                    if (actualClientIdForFinance) {
+                                      await loadClientFinancials(actualClientIdForFinance);
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to send invoice:', error);
+                                    toast.error('Failed to send invoice', { id: sendToast });
+                                  }
+                                }}
+                                className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-all"
+                                title="Send invoice to client"
+                              >
+                                <Mail className="w-4 h-4" />
+                              </button>
+                              <button
                                 onClick={() => {
                                   setEditingInvoice(invoice);
                                   setInvoiceForm({
@@ -1028,7 +1239,9 @@ export function ClientsPage() {
                                       onConfirm: async () => {
                                         try {
                                           await invoiceApi.update(invoice.id, { status: 'paid' });
-                                          await loadClientFinancials(selectedClientForFinance.id);
+                                          if (actualClientIdForFinance) {
+                                            await loadClientFinancials(actualClientIdForFinance);
+                                          }
                                           toast.success('Invoice marked as paid');
                                         } catch (error) {
                                           console.error('Failed to update invoice:', error);
@@ -1066,7 +1279,7 @@ export function ClientsPage() {
                     <button
                       onClick={() => {
                         setPaymentForm({
-                          clientId: selectedClientForFinance.id,
+                          clientId: actualClientIdForFinance || '',
                           amount: 0,
                           paymentMethod: 'bank_transfer',
                         });
@@ -1190,39 +1403,35 @@ export function ClientsPage() {
                 </div>
               )}
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Invoice Modal */}
       {showInvoiceModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowInvoiceModal(false); resetInvoiceForm(); } }}>
-          <div className="bg-white w-full max-w-4xl max-h-[95vh] flex flex-col shadow-2xl rounded-lg overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[110] overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) { setShowInvoiceModal(false); resetInvoiceForm(); } }}>
+          <div className="min-h-screen w-full flex items-center justify-center p-4">
+            <form onSubmit={handleInvoiceSubmit} className="bg-[#0f1623] border border-[#1a2332] w-full max-w-4xl my-8 flex flex-col shadow-2xl rounded-xl overflow-hidden relative">
             {/* Close Button */}
             <button 
               type="button"
               onClick={(e) => { e.preventDefault(); setShowInvoiceModal(false); resetInvoiceForm(); }} 
-              className="absolute top-4 right-4 z-10 text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-lg transition-colors"
+              className="absolute top-4 right-4 z-10 text-gray-400 hover:text-white hover:bg-[#1a2332] p-2 rounded-lg transition-colors"
             >
               <X className="w-6 h-6" />
             </button>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1">
               <div className="p-8 space-y-6">
                 {/* Header Section */}
-                <div className="flex justify-between items-start pb-6 border-b-2 border-gray-200">
-                  <div className="bg-[#2d3436] text-white px-6 py-4 rounded-lg">
-                    <div className="flex items-center gap-3 mb-1">
-                      <FileText className="w-6 h-6 text-[#00ff88]" />
-                      <div>
-                        <h2 className="text-xl font-bold">4D DEFENCE CRM</h2>
-                        <p className="text-xs text-gray-300">Professional Invoice System</p>
-                      </div>
-                    </div>
+                <div className="flex justify-between items-start pb-6 border-b border-[#1a2332]">
+                  <div className="px-2 py-2">
+                    <img src={logo} alt="Logo" className="h-16 w-auto object-contain" />
                   </div>
                   <div className="text-right">
-                    <h1 className="text-4xl font-bold text-gray-800">INVOICE</h1>
+                    <h1 className="text-4xl font-bold text-white">INVOICE</h1>
                   </div>
                 </div>
 
@@ -1231,32 +1440,35 @@ export function ClientsPage() {
                   {/* Left Column - Invoice Details */}
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">INVOICE #</label>
+                      <label className="block text-xs font-semibold text-gray-400 mb-1">INVOICE # <span className="text-red-500">*</span></label>
                       <input
                         type="text"
                         value={invoiceForm.invoiceNumber}
                         onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceNumber: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 text-gray-800 text-sm focus:border-[#00ff88] focus:outline-none"
+                        className="w-full bg-[#1a2332] border border-[#2a3442] rounded px-3 py-2 text-white text-sm focus:border-[#00ff88] focus:outline-none"
                         placeholder="001"
+                        required
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">INVOICE DATE</label>
+                        <label className="block text-xs font-semibold text-gray-400 mb-1">From Date <span className="text-red-500">*</span></label>
                         <input
                           type="date"
                           value={invoiceForm.issueDate?.split('T')[0] || new Date().toISOString().split('T')[0]}
                           onChange={(e) => setInvoiceForm({ ...invoiceForm, issueDate: e.target.value })}
-                          className="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 text-gray-800 text-sm focus:border-[#00ff88] focus:outline-none"
+                          className="w-full bg-[#1a2332] border border-[#2a3442] rounded px-3 py-2 text-white text-sm focus:border-[#00ff88] focus:outline-none"
+                          required
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">DUE DATE</label>
+                        <label className="block text-xs font-semibold text-gray-400 mb-1">To Date <span className="text-red-500">*</span></label>
                         <input
                           type="date"
                           value={invoiceForm.dueDate?.split('T')[0] || ''}
                           onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
-                          className="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 text-gray-800 text-sm focus:border-[#00ff88] focus:outline-none"
+                          className="w-full bg-[#1a2332] border border-[#2a3442] rounded px-3 py-2 text-white text-sm focus:border-[#00ff88] focus:outline-none"
+                          required
                         />
                       </div>
                     </div>
@@ -1264,184 +1476,197 @@ export function ClientsPage() {
 
                   {/* Right Column - Bill To */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-2">BILL TO</label>
+                    <label className="block text-xs font-semibold text-gray-400 mb-2">BILL TO <span className="text-red-500">*</span></label>
                     <textarea
                       value={invoiceForm.description}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 text-gray-800 text-sm focus:border-[#00ff88] focus:outline-none resize-none"
+                      className="w-full bg-[#1a2332] border border-[#2a3442] rounded px-3 py-2 text-white text-sm focus:border-[#00ff88] focus:outline-none resize-none"
                       placeholder="Client Name&#10;Address Line 1&#10;City, State ZIP&#10;Phone Number"
                       rows={4}
+                      required
                     />
+                    {selectedClientForFinance && (() => {
+                      const orgContacts = contacts.filter((c: any) => c.organisationId === selectedClientForFinance.organisationId);
+                      const primaryContact = orgContacts.find((c: any) => c.isPrimary) || orgContacts[0];
+                      return primaryContact?.email ? (
+                        <div className="mt-2 pt-2 border-t border-[#2a3442]">
+                          <div className="text-xs text-gray-400 mb-1">EMAIL</div>
+                          <div className="text-sm text-[#00ff88]">{primaryContact.email}</div>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
 
                 {/* Line Items Table */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-semibold text-gray-700">Line Items</h4>
-                    {lineItems.length < 2 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-white">Line Items</h4>
+                    {lineItems.length < 10 && (
                       <button
                         type="button"
                         onClick={addLineItem}
-                        className="text-xs bg-[#00ff88] hover:bg-[#00cc6a] text-gray-900 px-3 py-1.5 rounded font-medium transition-colors"
+                        className="text-xs bg-[#00ff88] hover:bg-[#00cc6a] text-[#0a0f1a] px-3 py-1.5 rounded font-medium transition-colors"
                       >
                         + Add Item
                       </button>
                     )}
                   </div>
 
-                  <div className="border border-gray-300 rounded-lg overflow-hidden">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-12 gap-3 px-4 py-3 bg-[#a4c639] text-white text-xs font-bold uppercase">
-                      <div className="col-span-1">NO</div>
-                      <div className="col-span-5">DESCRIPTION</div>
-                      <div className="col-span-2 text-center">PRICE</div>
-                      <div className="col-span-2 text-center">QTY</div>
-                      <div className="col-span-2 text-right">TOTAL</div>
-                    </div>
-
-                    {/* Table Rows */}
-                    <div className="bg-white divide-y divide-gray-200">
-                      {lineItems.map((item, index) => (
-                        <div key={index} className="grid grid-cols-12 gap-3 px-4 py-3 items-center">
-                          <div className="col-span-1 text-gray-800 font-medium text-sm">{index + 1}</div>
-                          <div className="col-span-5">
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                              className="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-gray-800 text-sm focus:border-[#00ff88] focus:outline-none"
-                              placeholder="ITEM/SERVICE"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs">$</span>
+                  <div className="border border-[#1a2332] rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-[#1a2332]">
+                        <tr>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase w-16">SL</th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase">Description <span className="text-red-500">*</span></th>
+                          <th className="text-right px-4 py-3 text-xs font-bold text-gray-400 uppercase w-32">Price <span className="text-red-500">*</span></th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-[#0f1623] divide-y divide-[#1a2332]">
+                        {lineItems.map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white font-medium text-sm">{index + 1}</span>
+                                {lineItems.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLineItem(index)}
+                                    className="text-red-400 hover:text-red-300 transition-colors"
+                                    title="Remove"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <select
+                                value={item.description}
+                                onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                                className="w-full bg-[#1a2332] border border-[#2a3442] rounded px-3 py-2 text-white text-sm focus:border-[#00ff88] focus:outline-none"
+                                required
+                              >
+                                <option value="" className="bg-[#1a2332] text-gray-400">Select a service...</option>
+                                <option value="Fourtify Professional" className="bg-[#1a2332] text-white">Fourtify Professional</option>
+                                <option value="Enterprise Solution" className="bg-[#1a2332] text-white">Enterprise Solution</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 justify-end">
+                                <div className="relative w-32">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={item.unitPrice || ''}
+                                    onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                    className="w-full bg-[#1a2332] border border-[#2a3442] rounded pl-7 pr-3 py-2 text-white text-sm text-right focus:border-[#00ff88] focus:outline-none"
+                                    placeholder="0.00"
+                                    readOnly
+                                    required
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        
+                        {/* Total Row integrated in table */}
+                        <tr className="bg-[#1a2332] font-semibold">
+                          <td className="px-4 py-3 text-gray-400 text-sm uppercase"></td>
+                          <td className="px-4 py-3 text-white text-sm uppercase">Subtotal</td>
+                          <td className="px-4 py-3 text-right text-[#00ff88] text-base">${calculateInvoiceTotals().subtotal.toFixed(2)}</td>
+                        </tr>
+                        
+                        <tr className="bg-[#1a2332]">
+                          <td className="px-4 py-3"></td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white text-sm uppercase">Tax <span className="text-red-500">*</span></span>
                               <input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={item.unitPrice}
-                                onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                                className="w-full bg-gray-50 border border-gray-300 rounded pl-5 pr-2 py-1.5 text-gray-800 text-sm text-center focus:border-[#00ff88] focus:outline-none"
+                                value={invoiceForm.tax || 0}
+                                onChange={(e) => setInvoiceForm({ ...invoiceForm, tax: parseFloat(e.target.value) || 0 })}
+                                className="w-14 bg-[#0f1623] border border-[#2a3442] rounded px-2 py-1 text-white text-xs text-center focus:border-[#00ff88] focus:outline-none"
+                                required
                               />
+                              <span className="text-xs text-gray-400">%</span>
                             </div>
-                          </div>
-                          <div className="col-span-2">
-                            <input
-                              type="number"
-                              step="1"
-                              min="0"
-                              value={item.quantity}
-                              onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                              className="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-gray-800 text-sm text-center focus:border-[#00ff88] focus:outline-none"
-                            />
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <span className="text-gray-800 font-semibold text-sm">${item.total.toFixed(2)}</span>
-                            {lineItems.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeLineItem(index)}
-                                className="ml-2 text-red-400 hover:text-red-600"
-                                title="Remove"
-                              >
-                                <X className="w-3 h-3 inline" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Totals Section */}
-                <div className="flex justify-end">
-                  <div className="w-80 space-y-2">
-                    <div className="flex justify-between items-center py-2 px-4 border-b border-gray-200">
-                      <span className="text-sm font-medium text-gray-700">SUB-TOTAL</span>
-                      <span className="text-sm font-semibold text-gray-800">${calculateInvoiceTotals().subtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 px-4 border-b border-gray-200">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-700">TAX</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={invoiceForm.tax || 0}
-                          onChange={(e) => setInvoiceForm({ ...invoiceForm, tax: parseFloat(e.target.value) || 0 })}
-                          className="w-12 bg-gray-50 border border-gray-300 rounded px-1 py-0.5 text-gray-800 text-xs text-center focus:border-[#00ff88] focus:outline-none"
-                        />
-                        <span className="text-xs text-gray-600">%</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-800">${calculateInvoiceTotals().tax.toFixed(2)}</span>
-                    </div>
-                    <div className="bg-[#a4c639] text-white py-3 px-4 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="text-base font-bold">Total Due</span>
-                        <span className="text-xl font-bold">${calculateInvoiceTotals().total.toFixed(2)}</span>
-                      </div>
-                    </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-white text-base">${calculateInvoiceTotals().tax.toFixed(2)}</td>
+                        </tr>
+                        
+                        <tr className="bg-[#0f1623] border-t-2 border-[#00ff88]">
+                          <td className="px-4 py-4"></td>
+                          <td className="px-4 py-4 text-white text-base font-bold uppercase">Total</td>
+                          <td className="px-4 py-4 text-right text-[#00ff88] text-xl font-bold">${calculateInvoiceTotals().total.toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
                 {/* Payment Method & Terms */}
-                <div className="grid grid-cols-2 gap-6 pt-6 border-t-2 border-gray-200">
+                <div className="grid grid-cols-2 gap-6 pt-6 border-t border-[#1a2332]">
                   <div>
-                    <h5 className="text-xs font-bold text-gray-700 mb-2">PAYMENT METHOD</h5>
+                    <h5 className="text-xs font-bold text-gray-400 mb-2">PAYMENT METHOD <span className="text-red-500">*</span></h5>
                     <textarea
                       value={invoiceForm.notes}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 text-gray-800 text-xs focus:border-[#00ff88] focus:outline-none resize-none"
+                      className="w-full bg-[#1a2332] border border-[#2a3442] rounded px-3 py-2 text-white text-xs focus:border-[#00ff88] focus:outline-none resize-none"
                       placeholder="Bank: Your Bank Name&#10;Account Name: Account Holder&#10;Account Number: 123456789"
                       rows={3}
+                      required
                     />
                   </div>
                   <div>
-                    <h5 className="text-xs font-bold text-gray-700 mb-2">TERM AND CONDITIONS</h5>
-                    <p className="text-xs text-gray-600 leading-relaxed">
+                    <h5 className="text-xs font-bold text-gray-400 mb-2">TERM AND CONDITIONS</h5>
+                    <p className="text-xs text-gray-300 leading-relaxed">
                       Please make the payment by the due date to the account below. We accept bank transfer, credit card, or check.
                     </p>
                   </div>
                 </div>
 
                 {/* Footer */}
-                <div className="text-center pt-4 border-t border-gray-200">
-                  <p className="text-sm font-semibold text-gray-700 mb-1">THANK YOU FOR YOUR BUSINESS</p>
-                  <div className="bg-[#2d3436] text-white py-3 px-4 rounded-lg inline-block">
-                    <p className="text-xs">Defence CRM - Invoice System - contact@defencecrm.com</p>
+                <div className="text-center pt-4 border-t border-[#1a2332]">
+                  <p className="text-sm font-semibold text-white mb-1">THANK YOU FOR YOUR BUSINESS</p>
+                  <div className="bg-[#1a2332] border border-[#00ff88] text-white py-3 px-4 rounded-lg inline-block">
+                    <p className="text-xs text-[#00ff88]">admin@fourd.com.au</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Footer Buttons */}
-            <div className="flex gap-3 p-5 border-t-2 border-gray-200 bg-gray-50 flex-shrink-0">
+            <div className="flex gap-3 p-5 border-t border-[#1a2332] bg-[#0a0f1a] flex-shrink-0">
               <button
                 type="button"
                 onClick={(e) => { e.preventDefault(); setShowInvoiceModal(false); resetInvoiceForm(); }}
-                className="flex-1 px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-medium"
+                className="flex-1 px-5 py-2.5 border border-[#2a3442] text-gray-400 rounded-lg hover:text-white hover:bg-[#1a2332] transition-colors font-medium"
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); handleInvoiceSubmit(e as any); }}
-                className="flex-1 px-5 py-2.5 bg-[#00ff88] text-gray-900 rounded-lg hover:bg-[#00cc6a] transition-colors font-bold"
+                type="submit"
+                className="flex-1 px-5 py-2.5 bg-[#00ff88] text-[#0a0f1a] rounded-lg hover:bg-[#00cc6a] transition-colors font-bold"
               >
                 {editingInvoice ? 'Update Invoice' : 'Create Invoice'}
               </button>
             </div>
+          </form>
           </div>
         </div>
       )}
 
       {/* Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110]">
-          <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl p-6 w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[110] overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setShowPaymentModal(false); }}>
+          <div className="min-h-screen w-full flex items-center justify-center p-4">
+          <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl p-6 w-full max-w-lg my-8 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl text-white">{editingPayment ? 'Edit Payment' : 'Record Payment'}</h3>
               <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-white">
@@ -1530,6 +1755,7 @@ export function ClientsPage() {
                 </button>
               </div>
             </form>
+          </div>
           </div>
         </div>
       )}

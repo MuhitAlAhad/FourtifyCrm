@@ -579,7 +579,7 @@ export const clientApi = {
             body: JSON.stringify(data),
         }),
     delete: (id: string) =>
-        apiFetch<void>(`/clients/${id}`, { method: 'DELETE' }),
+        apiFetch<{ message: string; deletedInvoices: number; deletedPayments: number }>(`/clients/${id}`, { method: 'DELETE' }),
     getStats: () =>
         apiFetch<{
             totalClients: number;
@@ -590,6 +590,15 @@ export const clientApi = {
             dispCompliantCount: number;
             dispComplianceRate: number;
         }>('/clients/stats'),
+    calculateMrr: (id: string) =>
+        apiFetch<{
+            clientId: string;
+            calculatedMrr: number;
+            invoiceCount: number;
+            totalRevenue: number;
+        }>(`/clients/${id}/calculate-mrr`, { method: 'POST' }),
+    updateMrrFromInvoices: (id: string) =>
+        apiFetch<Client>(`/clients/${id}/update-mrr-from-invoices`, { method: 'PUT' }),
 };
 
 export const invoiceApi = {
@@ -613,6 +622,10 @@ export const invoiceApi = {
         }),
     delete: (id: string) =>
         apiFetch<void>(`/invoices/${id}`, { method: 'DELETE' }),
+    send: (id: string) =>
+        apiFetch<{ success: boolean; message: string; sentTo: string }>(`/invoices/${id}/send`, {
+            method: 'POST',
+        }),
     getStats: (clientId?: string) =>
         apiFetch<{
             totalInvoices: number;

@@ -95,7 +95,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("activities");
+                    b.ToTable("activities", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Attachment", b =>
@@ -152,7 +152,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("ProposalId");
 
-                    b.ToTable("attachments");
+                    b.ToTable("attachments", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Client", b =>
@@ -209,7 +209,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("OrganisationId");
 
-                    b.ToTable("clients");
+                    b.ToTable("clients", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Contact", b =>
@@ -293,7 +293,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("FirstName", "LastName");
 
-                    b.ToTable("contacts");
+                    b.ToTable("contacts", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.ContactActivity", b =>
@@ -345,7 +345,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("ContactId");
 
-                    b.ToTable("contact_activities");
+                    b.ToTable("contact_activities", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.CrmTask", b =>
@@ -427,7 +427,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("crm_tasks");
+                    b.ToTable("crm_tasks", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.EmailCampaign", b =>
@@ -506,7 +506,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("TemplateId");
 
-                    b.ToTable("email_campaigns");
+                    b.ToTable("email_campaigns", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.EmailTemplate", b =>
@@ -550,7 +550,7 @@ namespace CRM.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("email_templates");
+                    b.ToTable("email_templates", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Invoice", b =>
@@ -620,7 +620,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("ClientId");
 
-                    b.ToTable("invoices");
+                    b.ToTable("invoices", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.InvoiceLineItem", b =>
@@ -663,7 +663,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("InvoiceId");
 
-                    b.ToTable("invoice_line_items");
+                    b.ToTable("invoice_line_items", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Lead", b =>
@@ -750,7 +750,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("Stage");
 
-                    b.ToTable("leads");
+                    b.ToTable("leads", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Meeting", b =>
@@ -830,7 +830,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("OrganisationId");
 
-                    b.ToTable("meetings");
+                    b.ToTable("meetings", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Note", b =>
@@ -883,7 +883,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("OrganisationId");
 
-                    b.ToTable("notes");
+                    b.ToTable("notes", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Organisation", b =>
@@ -988,7 +988,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("State");
 
-                    b.ToTable("organisations");
+                    b.ToTable("organisations", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Payment", b =>
@@ -1043,7 +1043,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("InvoiceId");
 
-                    b.ToTable("payments");
+                    b.ToTable("payments", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Proposal", b =>
@@ -1113,7 +1113,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("proposals");
+                    b.ToTable("proposals", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.SentEmail", b =>
@@ -1207,7 +1207,7 @@ namespace CRM.API.Migrations
 
                     b.HasIndex("OrganisationId");
 
-                    b.ToTable("sent_emails");
+                    b.ToTable("sent_emails", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.User", b =>
@@ -1282,7 +1282,7 @@ namespace CRM.API.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.ToTable("users");
+                    b.ToTable("users", (string)null);
                 });
 
             modelBuilder.Entity("CRM.API.Models.Activity", b =>

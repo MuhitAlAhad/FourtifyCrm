@@ -47,12 +47,14 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     mobile: '',
     role: '',
     organisationId: '',
+    organisationName: '',
     organisationAbn: '',
     isPrimary: false,
     notes: '',
     linkedin: '',
     status: 'new',
   });
+  const [originalOrgId, setOriginalOrgId] = useState<string | null>(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -159,6 +161,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
 
   const openEditModal = (contact: ContactDisplay) => {
     setEditContactId(contact.id);
+    setOriginalOrgId(contact.companyId);
     setEditForm({
       firstName: contact.firstName,
       lastName: contact.lastName,
@@ -166,7 +169,8 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
       phone: contact.phone,
       mobile: contact.mobile,
       role: contact.role,
-      organisationId: contact.company,
+      organisationId: contact.companyId,
+      organisationName: contact.company,
       organisationAbn: '',
       isPrimary: contact.isPrimary,
       notes: contact.notes,
@@ -181,18 +185,18 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     const loadingToast = toast.loading('Creating contact...');
     try {
       // Find or create organisation
-      let orgId = editForm.organisationId;
+      let orgId = '';
       
-      if (orgId && !orgId.startsWith('org:')) {
-        // It's a name, not an ID - find or create the organisation
-        const existingOrg = organisations.find(o => o.name.toLowerCase() === orgId.toLowerCase());
+      if (editForm.organisationName) {
+        // Check if organisation exists
+        const existingOrg = organisations.find(o => o.name.toLowerCase() === editForm.organisationName.toLowerCase());
         
         if (existingOrg) {
           orgId = existingOrg.id;
         } else {
           // Create new organisation
           const newOrg = await organisationApi.create({ 
-            name: orgId,
+            name: editForm.organisationName,
             abn: editForm.organisationAbn || ''
           });
           orgId = newOrg.id;
@@ -227,6 +231,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
         mobile: '',
         role: '',
         organisationId: '',
+        organisationName: '',
         organisationAbn: '',
         isPrimary: false,
         notes: '',
@@ -244,26 +249,32 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     if (!editContactId) return;
     const loadingToast = toast.loading('Updating contact...');
     try {
-      // Find or create organisation
+      // Handle organization
       let orgId = editForm.organisationId;
       
-      if (orgId && !orgId.startsWith('org:')) {
-        // It's a name, not an ID - find or create the organisation
-        const existingOrg = organisations.find(o => o.name.toLowerCase() === orgId.toLowerCase());
-        
-        if (existingOrg) {
-          orgId = existingOrg.id;
-        } else {
-          // Create new organisation
-          const newOrg = await organisationApi.create({ 
-            name: orgId,
-            abn: editForm.organisationAbn || ''
+      // If there's an original org and the name has changed, update it
+      if (originalOrgId && editForm.organisationName) {
+        const originalOrg = organisations.find(o => o.id === originalOrgId);
+        if (originalOrg && originalOrg.name !== editForm.organisationName) {
+          // Update the existing organization's name
+          await organisationApi.update(originalOrgId, {
+            name: editForm.organisationName,
           });
-          orgId = newOrg.id;
           // Refresh organisations list
           const orgsResponse = await organisationApi.getAll();
           setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
         }
+        orgId = originalOrgId;
+      } else if (!orgId && editForm.organisationName) {
+        // No org ID but has a name - create new organisation
+        const newOrg = await organisationApi.create({ 
+          name: editForm.organisationName,
+          abn: editForm.organisationAbn || ''
+        });
+        orgId = newOrg.id;
+        // Refresh organisations list
+        const orgsResponse = await organisationApi.getAll();
+        setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
       }
       
       const updated = await contactApi.update(editContactId, {
@@ -304,6 +315,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
       toast.success('Contact updated successfully', { id: loadingToast });
       setShowEditModal(false);
       setEditContactId(null);
+      setOriginalOrgId(null);
     } catch (err) {
       console.error('Error updating contact:', err);
       toast.error('Failed to update contact', { id: loadingToast });
@@ -878,8 +890,8 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation</label>
                   <input
                     type="text"
-                    value={editForm.organisationId}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationId: e.target.value }))}
+                    value={editForm.organisationName}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationName: e.target.value }))}
                     placeholder="Enter organisation name"
                     style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
                   />

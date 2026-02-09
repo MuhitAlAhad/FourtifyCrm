@@ -7,7 +7,7 @@ interface ConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: 'danger' | 'warning' | 'info' | 'success';
@@ -135,7 +135,7 @@ export function ConfirmDialog({
         </h2>
 
         {/* Message */}
-        <p
+        <div
           style={{
             fontSize: '16px',
             color: '#9ca3af',
@@ -144,7 +144,7 @@ export function ConfirmDialog({
           }}
         >
           {message}
-        </p>
+        </div>
 
         {/* Actions */}
         <div
@@ -177,8 +177,8 @@ export function ConfirmDialog({
             {cancelText}
           </button>
           <button
-            onClick={() => {
-              onConfirm();
+            onClick={async () => {
+              await onConfirm();
               onClose();
             }}
             style={{

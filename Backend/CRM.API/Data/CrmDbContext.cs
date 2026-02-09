@@ -176,6 +176,53 @@ public class CrmDbContext : DbContext
             entity.HasIndex(e => e.LeadId);
             entity.HasIndex(e => e.ProposalId);
             entity.HasIndex(e => e.OrganisationId);
+        });        
+        // ============ CLIENT ============
+        modelBuilder.Entity<Client>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Indexes
+            entity.HasIndex(e => e.OrganisationId);
+            entity.HasIndex(e => e.Status);
+            
+            // Relationships - Cascade delete invoices and payments when client is deleted
+            entity.HasMany<Invoice>()
+                .WithOne(i => i.Client)
+                .HasForeignKey(i => i.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasMany<Payment>()
+                .WithOne(p => p.Client)
+                .HasForeignKey(p => p.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
-    }
+        
+        // ============ INVOICE ============
+        modelBuilder.Entity<Invoice>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Indexes
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.InvoiceNumber).IsUnique();
+            
+            // Relationships - Cascade delete line items when invoice is deleted
+            entity.HasMany(i => i.LineItems)
+                .WithOne(li => li.Invoice)
+                .HasForeignKey(li => li.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        
+        // ============ PAYMENT ============
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Indexes
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => e.InvoiceId);
+            entity.HasIndex(e => e.PaymentDate);
+        });    }
 }

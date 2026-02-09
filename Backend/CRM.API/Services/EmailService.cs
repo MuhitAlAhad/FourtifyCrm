@@ -31,6 +31,13 @@ public interface ISesEmailService
 
 }
 
+public class EmailAttachment
+{
+    public string FileName { get; set; } = string.Empty;
+    public byte[] Content { get; set; } = Array.Empty<byte>();
+    public string ContentType { get; set; } = "application/pdf";
+}
+
 public class SendEmailRequest
 {
     public string ToEmail { get; set; } = string.Empty;
@@ -42,6 +49,7 @@ public class SendEmailRequest
     public string? OrganisationId { get; set; }
     public string? CampaignId { get; set; }
     public string SentBy { get; set; } = "CRM User";
+    public List<EmailAttachment>? Attachments { get; set; }
 }
 
 public class EmailService : IEmailService
@@ -98,6 +106,16 @@ public class EmailService : IEmailService
                 TextBody = request.Body,
                 HtmlBody = string.IsNullOrEmpty(request.HtmlBody) ? null : request.HtmlBody
             };
+
+            // Add attachments if any
+            if (request.Attachments != null && request.Attachments.Any())
+            {
+                message.Attachments = request.Attachments.Select(a => new Resend.EmailAttachment
+                {
+                    Filename = a.FileName,
+                    Content = a.Content
+                }).ToList();
+            }
 
             var response = await _resend.EmailSendAsync(message);
             

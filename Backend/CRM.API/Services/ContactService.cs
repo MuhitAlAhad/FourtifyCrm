@@ -173,6 +173,49 @@ public class ContactService : IContactService
         var contact = await _context.Contacts.FindAsync(id);
         if (contact == null) return false;
 
+        // Clean up related records before deleting the contact
+        // Set ContactId to empty string (or NULL if nullable) in related tables
+        
+        // Update Leads
+        var leads = await _context.Leads.Where(l => l.ContactId == id).ToListAsync();
+        foreach (var lead in leads)
+        {
+            lead.ContactId = string.Empty;
+        }
+
+        // Update Activities
+        var activities = await _context.Activities.Where(a => a.ContactId == id).ToListAsync();
+        foreach (var activity in activities)
+        {
+            activity.ContactId = null;
+        }
+
+        // Update Notes
+        var notes = await _context.Notes.Where(n => n.ContactId == id).ToListAsync();
+        foreach (var note in notes)
+        {
+            note.ContactId = null;
+        }
+
+        // Update Meetings
+        var meetings = await _context.Meetings.Where(m => m.ContactId == id).ToListAsync();
+        foreach (var meeting in meetings)
+        {
+            meeting.ContactId = null;
+        }
+
+        // Update SentEmails
+        var sentEmails = await _context.SentEmails.Where(e => e.ContactId == id).ToListAsync();
+        foreach (var email in sentEmails)
+        {
+            email.ContactId = null;
+        }
+
+        // Delete ContactActivities (cascade delete)
+        var contactActivities = await _context.ContactActivities.Where(ca => ca.ContactId == id).ToListAsync();
+        _context.ContactActivities.RemoveRange(contactActivities);
+
+        // Now delete the contact
         _context.Contacts.Remove(contact);
         await _context.SaveChangesAsync();
         return true;
