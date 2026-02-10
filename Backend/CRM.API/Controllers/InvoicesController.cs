@@ -436,9 +436,9 @@ public class InvoicesController : ControllerBase
 
             var logoBytes = await System.IO.File.ReadAllBytesAsync(logoPath);
             
-            // Upload to Supabase storage
-            var supabaseUrl = _configuration["Supabase:Url"];
-            var supabaseKey = _configuration["Supabase:ApiKey"];
+            // Upload to Supabase storage (reuse variables declared earlier)
+            supabaseUrl = _configuration["Supabase:Url"];
+            supabaseKey = _configuration["Supabase:ApiKey"];
 
             if (!string.IsNullOrWhiteSpace(supabaseUrl) && !string.IsNullOrWhiteSpace(supabaseKey))
             {
