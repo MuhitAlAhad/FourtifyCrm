@@ -298,7 +298,7 @@ public class InvoicesController : ControllerBase
         var emailHtml = await GenerateInvoiceEmailHtmlAsync(invoice, primaryContact, invoiceHtml, hostedLogoUrl);
 
         // Generate PDF-specific HTML (white background, black text)
-        var pdfHtml = GenerateInvoicePdfHtml(invoice, primaryContact);
+        var pdfHtml = GenerateInvoicePdfHtml(invoice, primaryContact, hostedLogoUrl);
 
         // Generate PDF from invoice HTML
         byte[] pdfBytes;
@@ -689,7 +689,7 @@ public class InvoicesController : ControllerBase
         </div>";
     }
 
-    private string GenerateInvoicePdfHtml(Invoice invoice, Contact contact)
+    private string GenerateInvoicePdfHtml(Invoice invoice, Contact contact, string? hostedLogoUrl = null)
     {
         var lineItemsHtml = string.Join("", invoice.LineItems?.OrderBy(li => li.SortOrder).Select((li, index) => 
             $@"<tr style='border-bottom: 1px solid #e2e8f0;'>
@@ -699,10 +699,23 @@ public class InvoicesController : ControllerBase
             </tr>") ?? Enumerable.Empty<string>());
 
         var taxPercentage = invoice.Amount > 0 ? (invoice.Tax / invoice.Amount * 100) : 0;
-        var logoBase64 = GetLogoBase64();
-        var logoHtml = !string.IsNullOrEmpty(logoBase64) 
-            ? $"<img src='data:image/png;base64,{logoBase64}' style='max-width: 160px; height: auto;' alt='Company Logo' />"
-            : "<div style='background-color: #f1f5f9; padding: 16px; border-radius: 8px; color: #059669; font-size: 18px; font-weight: bold; border: 2px solid #e2e8f0;'>4D LOGO</div>";
+        // Prefer hosted logo URL (e.g., Supabase public URL) so Puppeteer can fetch it
+        string? logoBase64 = GetLogoBase64();
+        string logoHtml;
+        if (!string.IsNullOrEmpty(hostedLogoUrl))
+        {
+            // Use hosted URL
+            logoHtml = $"<img src='{hostedLogoUrl}' style='max-width: 160px; height: auto;' alt='Company Logo' />";
+        }
+        else if (!string.IsNullOrEmpty(logoBase64))
+        {
+            // Fallback to embedded base64
+            logoHtml = $"<img src='data:image/png;base64,{logoBase64}' style='max-width: 160px; height: auto;' alt='Company Logo' />";
+        }
+        else
+        {
+            logoHtml = "<div style='background-color: #f1f5f9; padding: 16px; border-radius: 8px; color: #059669; font-size: 18px; font-weight: bold; border: 2px solid #e2e8f0;'>4D LOGO</div>";
+        }
 
         return $@"
         <!DOCTYPE html>
