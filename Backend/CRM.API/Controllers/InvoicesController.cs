@@ -378,7 +378,34 @@ public class InvoicesController : ControllerBase
 
         try
         {
-            // Find workspace root by looking for .sln file
+            // Try to use logo from Supabase storage first (if already uploaded)
+            var supabaseUrl = _configuration["Supabase:Url"];
+            var supabaseKey = _configuration["Supabase:ApiKey"];
+            
+            if (!string.IsNullOrWhiteSpace(supabaseUrl) && !string.IsNullOrWhiteSpace(supabaseKey))
+            {
+                var logoUrl = $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/public/signatures/company-logo.png";
+                
+                // Check if logo exists in Supabase
+                try
+                {
+                    using var client = _httpClientFactory.CreateClient();
+                    var checkResponse = await client.GetAsync(logoUrl);
+                    
+                    if (checkResponse.IsSuccessStatusCode)
+                    {
+                        _cachedLogoUrl = logoUrl;
+                        _logger.LogInformation("Using logo from Supabase: {Url}", logoUrl);
+                        return _cachedLogoUrl;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to check Supabase logo availability");
+                }
+            }
+            
+            // Try to find logo file locally (for development/uploading)
             var projectDir = Directory.GetCurrentDirectory();
             DirectoryInfo? currentDir = new DirectoryInfo(projectDir);
             string? workspaceRoot = null;
@@ -395,7 +422,7 @@ public class InvoicesController : ControllerBase
             
             if (workspaceRoot == null)
             {
-                _logger.LogWarning("Could not find workspace root (no .sln file found)");
+                _logger.LogWarning("Could not find workspace root (no .sln file found), logo will not be available");
                 return null;
             }
             
@@ -403,7 +430,7 @@ public class InvoicesController : ControllerBase
             
             if (!System.IO.File.Exists(logoPath))
             {
-                _logger.LogWarning("Logo file not found at: {LogoPath}", logoPath);
+                _logger.LogWarning("Logo file not found at: {LogoPath}, logo will not be available", logoPath);
                 return null;
             }
 
@@ -523,28 +550,40 @@ public class InvoicesController : ControllerBase
 
     private async Task<byte[]> GenerateInvoicePdfAsync(string html)
     {
-        // Download Chromium browser if not already downloaded
-        var browserFetcher = new BrowserFetcher();
-        await browserFetcher.DownloadAsync();
-
-        // Launch browser and create PDF
-        await using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
+        try
         {
-            Headless = true,
-            Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" }
-        });
+            // Download Chromium browser if not already downloaded
+            var browserFetcher = new BrowserFetcher();
+            
+            _logger.LogInformation("Checking for Chromium installation...");
+            await browserFetcher.DownloadAsync();
+            _logger.LogInformation("Chromium ready");
 
-        await using var page = await browser.NewPageAsync();
-        await page.SetContentAsync(html);
+            // Launch browser and create PDF
+            await using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
+            {
+                Headless = true,
+                Args = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage" }
+            });
 
-        // Generate PDF with proper formatting
-        var pdfData = await page.PdfDataAsync(new PdfOptions
+            await using var page = await browser.NewPageAsync();
+            await page.SetContentAsync(html);
+
+            // Generate PDF with proper formatting
+            var pdfData = await page.PdfDataAsync(new PdfOptions
+            {
+                Format = PuppeteerSharp.Media.PaperFormat.A4,
+                PrintBackground = true
+            });
+
+            _logger.LogInformation("PDF generated successfully, size: {Size} bytes", pdfData.Length);
+            return pdfData;
+        }
+        catch (Exception ex)
         {
-            Format = PuppeteerSharp.Media.PaperFormat.A4,
-            PrintBackground = true
-        });
-
-        return pdfData;
+            _logger.LogError(ex, "Failed to generate PDF using PuppeteerSharp");
+            throw; // Re-throw to be handled by caller
+        }
     }
 
     private string GenerateInvoiceHtml(Invoice invoice, Contact contact)
