@@ -698,19 +698,21 @@ export function ClientsPage() {
         </div>
       </div>
       
-      {/* Global Financial Overview Button */}
-      <div className="flex justify-center">
-        <button
-          onClick={openGlobalFinancialModal}
-          className="flex items-center gap-3 bg-[#1a2332] border-2 border-[#00ff88] text-white px-6 py-3 rounded-lg hover:bg-[#2a3442] transition-all shadow-lg shadow-[#00ff88]/10"
-        >
-          <FileText className="w-5 h-5 text-[#00ff88]" />
-          <div className="text-left">
-            <div className="text-sm font-semibold">Global Financial Overview</div>
-            <div className="text-xs text-gray-400">View all invoices and payments across clients</div>
-          </div>
-        </button>
-      </div>
+      {/* Global Financial Overview Button - hidden for now */}
+      {false && (
+        <div className="flex justify-center">
+          <button
+            onClick={openGlobalFinancialModal}
+            className="flex items-center gap-3 bg-[#1a2332] border-2 border-[#00ff88] text-white px-6 py-3 rounded-lg hover:bg-[#2a3442] transition-all shadow-lg shadow-[#00ff88]/10"
+          >
+            <FileText className="w-5 h-5 text-[#00ff88]" />
+            <div className="text-left">
+              <div className="text-sm font-semibold">Global Financial Overview</div>
+              <div className="text-xs text-gray-400">View all invoices and payments across clients</div>
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-4">
