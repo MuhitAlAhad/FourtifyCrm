@@ -16,6 +16,7 @@ public class InvoicesController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IWebHostEnvironment _env;
     private static string? _cachedLogoUrl = null;
 
     public InvoicesController(
@@ -23,13 +24,15 @@ public class InvoicesController : ControllerBase
         ILogger<InvoicesController> logger, 
         IEmailService emailService,
         IConfiguration configuration,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IWebHostEnvironment env)
     {
         _context = context;
         _logger = logger;
         _emailService = emailService;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
+        _env = env;
     }
 
     [HttpGet]
@@ -502,48 +505,23 @@ public class InvoicesController : ControllerBase
     {
         try
         {
-            // Navigate from CRM.API project to workspace root by finding the .sln file
-            var projectDir = Directory.GetCurrentDirectory();
-            
-            // Find workspace root by looking for .sln file
-            DirectoryInfo? currentDir = new DirectoryInfo(projectDir);
-            string? workspaceRoot = null;
-            
-            while (currentDir != null && workspaceRoot == null)
-            {
-                if (currentDir.GetFiles("*.sln").Any())
-                {
-                    workspaceRoot = currentDir.FullName;
-                    break;
-                }
-                currentDir = currentDir.Parent;
-            }
-            
-            if (workspaceRoot == null)
-            {
-                _logger.LogWarning("Could not find workspace root (no .sln file found)");
-                return string.Empty;
-            }
-            
-            var logoPath = Path.Combine(workspaceRoot, "src", "assets", "35f931b802bf39733103d00f96fb6f9c21293f6e.png");
-            
-            _logger.LogInformation("Current dir: {CurrentDir}", projectDir);
-            _logger.LogInformation("Workspace root: {WorkspaceRoot}", workspaceRoot);
+            // Prefer a logo placed in the app's wwwroot (will be included in publish)
+            var logoPath = Path.Combine(_env.ContentRootPath, "wwwroot", "signatures", "company-logo.png");
             _logger.LogInformation("Looking for logo at: {LogoPath}", logoPath);
-            
+
             if (System.IO.File.Exists(logoPath))
             {
                 var imageBytes = System.IO.File.ReadAllBytes(logoPath);
-                _logger.LogInformation("Logo loaded successfully, size: {Size} bytes", imageBytes.Length);
+                _logger.LogInformation("Logo loaded successfully from wwwroot, size: {Size} bytes", imageBytes.Length);
                 return Convert.ToBase64String(imageBytes);
             }
-            
-            _logger.LogWarning("Logo file not found at: {LogoPath}", logoPath);
+
+            _logger.LogWarning("Logo file not found in wwwroot at: {LogoPath}", logoPath);
             return string.Empty;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading logo file");
+            _logger.LogError(ex, "Error reading logo file from wwwroot");
             return string.Empty;
         }
     }

@@ -20,15 +20,11 @@ export function ClientsPage() {
   
   // Financial management state
   const [showFinancialModal, setShowFinancialModal] = useState(false);
-  const [showGlobalFinancialModal, setShowGlobalFinancialModal] = useState(false);
   const [selectedClientForFinance, setSelectedClientForFinance] = useState<ClientRow | null>(null);
   const [actualClientIdForFinance, setActualClientIdForFinance] = useState<string | null>(null);
   const [financialTab, setFinancialTab] = useState<'invoices' | 'payments' | 'stats'>('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
-  const [allPayments, setAllPayments] = useState<Payment[]>([]);
-  const [globalFinancialSearchQuery, setGlobalFinancialSearchQuery] = useState('');
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -357,18 +353,6 @@ export function ClientsPage() {
     setInvoiceStatusFilter('all');
     setFinancialTab('invoices');
   };
-  
-  const openGlobalFinancialModal = async () => {
-    setShowGlobalFinancialModal(true);
-    await loadAllFinancials();
-  };
-  
-  const closeGlobalFinancialModal = () => {
-    setShowGlobalFinancialModal(false);
-    setAllInvoices([]);
-    setAllPayments([]);
-    setGlobalFinancialSearchQuery('');
-  };
 
   const loadClientFinancials = async (clientId: string) => {
     try {
@@ -383,19 +367,6 @@ export function ClientsPage() {
       setPayments(paymentsRes.payments || []);
     } catch (error) {
       console.error('Failed to load financials:', error);
-    }
-  };
-  
-  const loadAllFinancials = async () => {
-    try {
-      const [invoicesRes, paymentsRes] = await Promise.all([
-        invoiceApi.getAll(),
-        paymentApi.getAll(),
-      ]);
-      setAllInvoices(invoicesRes.invoices || []);
-      setAllPayments(paymentsRes.payments || []);
-    } catch (error) {
-      console.error('Failed to load all financials:', error);
     }
   };
 
@@ -697,22 +668,6 @@ export function ClientsPage() {
           <div className="text-3xl text-white">{onboardedCount}</div>
         </div>
       </div>
-      
-      {/* Global Financial Overview Button - hidden for now */}
-      {false && (
-        <div className="flex justify-center">
-          <button
-            onClick={openGlobalFinancialModal}
-            className="flex items-center gap-3 bg-[#1a2332] border-2 border-[#00ff88] text-white px-6 py-3 rounded-lg hover:bg-[#2a3442] transition-all shadow-lg shadow-[#00ff88]/10"
-          >
-            <FileText className="w-5 h-5 text-[#00ff88]" />
-            <div className="text-left">
-              <div className="text-sm font-semibold">Global Financial Overview</div>
-              <div className="text-xs text-gray-400">View all invoices and payments across clients</div>
-            </div>
-          </button>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="flex gap-4">
@@ -957,18 +912,18 @@ export function ClientsPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[100] overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) closeFinancialModal(); }}>
           <div className="min-h-screen w-full flex items-center justify-center p-4">
             <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl w-full max-w-6xl my-8 flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center p-6 border-b border-[#1a2332]">
-              <div>
-                <h2 className="text-2xl text-white">{selectedClientForFinance.organisationName} - Financial Management</h2>
-                <p className="text-gray-400 text-sm mt-1">Manage invoices, payments, and financial records for this client only</p>
+              <div className="flex justify-between items-center p-6 border-b border-[#1a2332]">
+                <div>
+                  <h2 className="text-2xl text-white">{selectedClientForFinance.organisationName} - Financial Management</h2>
+                  <p className="text-gray-400 text-sm mt-1">Manage invoices, payments, and financial records for this client only</p>
+                </div>
+                <button onClick={closeFinancialModal} className="text-gray-400 hover:text-white transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
               </div>
-              <button onClick={closeFinancialModal} className="text-gray-400 hover:text-white transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-[#1a2332] px-6">
+              {/* Tabs */}
+              <div className="flex border-b border-[#1a2332] px-6">
               <button
                 onClick={() => setFinancialTab('invoices')}
                 className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -1668,14 +1623,14 @@ export function ClientsPage() {
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[110] overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setShowPaymentModal(false); }}>
           <div className="min-h-screen w-full flex items-center justify-center p-4">
-          <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl p-6 w-full max-w-lg my-8 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl text-white">{editingPayment ? 'Edit Payment' : 'Record Payment'}</h3>
-              <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handlePaymentSubmit} className="space-y-4">
+            <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl p-6 w-full max-w-lg my-8 shadow-2xl">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl text-white">{editingPayment ? 'Edit Payment' : 'Record Payment'}</h3>
+                <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handlePaymentSubmit} className="space-y-4">
               <div>
                 <label className="block text-gray-400 text-sm mb-2">Link to Invoice (Optional)</label>
                 <select
@@ -1757,189 +1712,6 @@ export function ClientsPage() {
                 </button>
               </div>
             </form>
-          </div>
-          </div>
-        </div>
-      )}
-
-      {/* Global Financial Overview Modal */}
-      {showGlobalFinancialModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4">
-          <div className="bg-[#0f1623] border border-[#1a2332] rounded-xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            {/* Header */}
-            <div className="flex justify-between items-center p-6 border-b border-[#1a2332]">
-              <div>
-                <h2 className="text-2xl text-white font-semibold">Global Financial Overview</h2>
-                <p className="text-gray-400 text-sm mt-1">View and search all invoices and payments across all clients</p>
-              </div>
-              <button onClick={closeGlobalFinancialModal} className="text-gray-400 hover:text-white transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Search Bar */}
-            <div className="p-6 border-b border-[#1a2332] bg-[#1a2332]/30">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input
-                  type="text"
-                  placeholder="Search by client name, invoice number, or description..."
-                  value={globalFinancialSearchQuery}
-                  onChange={(e) => setGlobalFinancialSearchQuery(e.target.value)}
-                  className="w-full bg-[#0f1623] border border-[#2a3442] rounded-lg pl-10 pr-4 py-3 text-white text-sm placeholder-gray-500 focus:border-[#00ff88] focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Financial Summary Stats */}
-              <div className="grid grid-cols-4 gap-4 mb-6">
-                <div className="bg-[#1a2332] rounded-lg p-4 border border-[#2a3442]">
-                  <div className="text-gray-400 text-xs uppercase tracking-wide mb-1">Total Invoices</div>
-                  <div className="text-white text-2xl font-bold">{allInvoices.length}</div>
-                </div>
-                <div className="bg-[#1a2332] rounded-lg p-4 border border-[#2a3442]">
-                  <div className="text-gray-400 text-xs uppercase tracking-wide mb-1">Total Value</div>
-                  <div className="text-[#00ff88] text-2xl font-bold">${allInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0).toFixed(2)}</div>
-                </div>
-                <div className="bg-[#1a2332] rounded-lg p-4 border border-[#2a3442]">
-                  <div className="text-gray-400 text-xs uppercase tracking-wide mb-1">Paid Amount</div>
-                  <div className="text-[#00ff88] text-2xl font-bold">${allInvoices.filter(i => i.status === 'paid').reduce((sum, inv) => sum + inv.totalAmount, 0).toFixed(2)}</div>
-                </div>
-                <div className="bg-[#1a2332] rounded-lg p-4 border border-[#2a3442]">
-                  <div className="text-gray-400 text-xs uppercase tracking-wide mb-1">Outstanding</div>
-                  <div className="text-yellow-400 text-2xl font-bold">${allInvoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((sum, inv) => sum + inv.totalAmount, 0).toFixed(2)}</div>
-                </div>
-              </div>
-
-              {/* Invoices List */}
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg text-white font-semibold mb-4 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-[#00ff88]" />
-                    All Invoices
-                  </h3>
-                  {allInvoices
-                    .filter(invoice => 
-                      !globalFinancialSearchQuery || 
-                      invoice.clientName?.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                      invoice.invoiceNumber.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                      invoice.description.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase())
-                    )
-                    .length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 bg-[#1a2332]/30 rounded-lg border border-dashed border-[#2a3442]">
-                      {globalFinancialSearchQuery ? 'No invoices match your search' : 'No invoices found'}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {allInvoices
-                        .filter(invoice => 
-                          !globalFinancialSearchQuery || 
-                          invoice.clientName?.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                          invoice.invoiceNumber.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                          invoice.description.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase())
-                        )
-                        .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())
-                        .map((invoice) => (
-                          <div key={invoice.id} className="bg-[#1a2332] rounded-lg p-4 border border-[#2a3442] hover:border-[#00ff88]/30 transition-all">
-                            <div className="flex justify-between items-start gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <span className="text-[#00ff88] font-medium text-sm">{invoice.clientName}</span>
-                                  <span className="text-gray-600">•</span>
-                                  <span className="text-white font-semibold">{invoice.invoiceNumber}</span>
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    invoice.status === 'paid' ? 'bg-[#00ff88]/20 text-[#00ff88]' :
-                                    invoice.status === 'overdue' ? 'bg-red-500/20 text-red-400' :
-                                    invoice.status === 'sent' ? 'bg-blue-500/20 text-blue-400' :
-                                    'bg-gray-500/20 text-gray-400'
-                                  }`}>
-                                    {invoice.status}
-                                  </span>
-                                </div>
-                                {invoice.description && (
-                                  <p className="text-gray-400 text-sm mb-2">{invoice.description}</p>
-                                )}
-                                <div className="flex items-center gap-4 text-sm">
-                                  <span className="text-gray-500">Total: <span className="text-[#00ff88] font-medium">${invoice.totalAmount.toFixed(2)}</span></span>
-                                  <span className="text-gray-500">Issued: {new Date(invoice.issueDate).toLocaleDateString('en-AU')}</span>
-                                  {invoice.dueDate && (
-                                    <span className="text-gray-500">Due: {new Date(invoice.dueDate).toLocaleDateString('en-AU')}</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Payments List */}
-                <div>
-                  <h3 className="text-lg text-white font-semibold mb-4 flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-[#00ff88]" />
-                    All Payments
-                  </h3>
-                  {allPayments
-                    .filter(payment => 
-                      !globalFinancialSearchQuery || 
-                      payment.clientName?.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                      payment.invoiceNumber?.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                      payment.reference.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase())
-                    )
-                    .length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 bg-[#1a2332]/30 rounded-lg border border-dashed border-[#2a3442]">
-                      {globalFinancialSearchQuery ? 'No payments match your search' : 'No payments found'}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {allPayments
-                        .filter(payment => 
-                          !globalFinancialSearchQuery || 
-                          payment.clientName?.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                          payment.invoiceNumber?.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase()) ||
-                          payment.reference.toLowerCase().includes(globalFinancialSearchQuery.toLowerCase())
-                        )
-                        .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
-                        .map((payment) => (
-                          <div key={payment.id} className="bg-[#1a2332] rounded-lg p-4 border border-[#2a3442]">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <span className="text-[#00ff88] font-medium text-sm">{payment.clientName}</span>
-                                  <span className="text-gray-600">•</span>
-                                  <span className="text-white font-bold text-lg">${payment.amount.toFixed(2)}</span>
-                                  <span className="px-2 py-1 bg-gray-700 rounded text-xs text-gray-300">{payment.paymentMethod.replace('_', ' ').toUpperCase()}</span>
-                                </div>
-                                <div className="flex items-center gap-4 text-sm">
-                                  <span className="text-gray-500">Date: {new Date(payment.paymentDate).toLocaleDateString('en-AU')}</span>
-                                  {payment.invoiceNumber && (
-                                    <span className="text-gray-500">Invoice: {payment.invoiceNumber}</span>
-                                  )}
-                                  {payment.reference && (
-                                    <span className="text-gray-500">Ref: {payment.reference}</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-[#1a2332] bg-[#0a0f1a]">
-              <button
-                onClick={closeGlobalFinancialModal}
-                className="w-full px-5 py-3 bg-[#1a2332] border border-[#2a3442] text-white rounded-lg hover:bg-[#2a3442] transition-all font-medium"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
@@ -1957,3 +1729,4 @@ export function ClientsPage() {
     </div>
   );
 }
+

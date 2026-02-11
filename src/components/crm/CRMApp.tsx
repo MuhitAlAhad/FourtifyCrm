@@ -6,6 +6,7 @@ import { ContactsPage } from './ContactsPage';
 import { EmailCenterPage } from './EmailCenterPage';
 import { PipelinePage } from './PipelinePage';
 import { ClientsPage } from './ClientsPage';
+import { ChampionsPage } from './ChampionsPage';
 import { SettingsPage } from './SettingsPage';
 import { CRMSidebar } from './CRMSidebar';
 import { CRMHeader } from './CRMHeader';
@@ -109,25 +110,27 @@ export function CRMApp() {
     switch (currentPage) {
       case 'dashboard':
         return <CRMDashboard onNavigate={setCurrentPage} />;
-      case 'leads':
-        return <LeadsPage />;
-      case 'organisations':
-        return <OrganisationsPage />;
       case 'contacts':
         return <ContactsPage onNavigate={setCurrentPage} onSendEmail={(email, name) => {
           setEmailCenterRecipient({ email, name });
           setCurrentPage('email');
         }} />;
-      case 'email':
-        return <EmailCenterPage prefilledRecipient={emailCenterRecipient} onClearRecipient={() => setEmailCenterRecipient(null)} />;
-      case 'pipeline':
-        return <PipelinePage />;
+      case 'organisations':
+        return <OrganisationsPage />;
+      case 'leads':
+        return <LeadsPage />;
       case 'clients':
         return <ClientsPage />;
+      case 'champions':
+        return <ChampionsPage />;
+      case 'email':
+        return <EmailCenterPage prefilledRecipient={emailCenterRecipient} onClearRecipient={() => setEmailCenterRecipient(null)} />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
         return <AdminManagementPage />;
+      case 'pipeline':
+        return <PipelinePage />;
       default:
         return <CRMDashboard />;
     }

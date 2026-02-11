@@ -30,6 +30,7 @@ public class CrmDbContext : DbContext
     public DbSet<Invoice> Invoices { get; set; }
     public DbSet<InvoiceLineItem> InvoiceLineItems { get; set; }
     public DbSet<Payment> Payments { get; set; }
+    public DbSet<Champion> Champions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -224,5 +225,17 @@ public class CrmDbContext : DbContext
             entity.HasIndex(e => e.ClientId);
             entity.HasIndex(e => e.InvoiceId);
             entity.HasIndex(e => e.PaymentDate);
-        });    }
+        });
+        
+        // ============ CHAMPION ============
+        modelBuilder.Entity<Champion>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Indexes
+            entity.HasIndex(e => e.Email);
+            entity.HasIndex(e => e.OrganizationName);
+            entity.HasIndex(e => e.Name);
+        });
+    }
 }

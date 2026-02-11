@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, Mail, UserCircle, Settings, Shield, Building2, UserCog, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Mail, UserCircle, Settings, Shield, Building2, UserCog, Award, LogOut } from 'lucide-react';
 import logo from '../../assets/35f931b802bf39733103d00f96fb6f9c21293f6e.png';
 
 interface CRMSidebarProps {
@@ -11,11 +11,12 @@ interface CRMSidebarProps {
 export function CRMSidebar({ currentPage, onNavigate, userRole }: CRMSidebarProps) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'leads', label: 'Leads', icon: UserCircle },
-    { id: 'organisations', label: 'Organisations', icon: Building2 },
     { id: 'contacts', label: 'Contacts', icon: Users },
-    { id: 'email', label: 'Email Center', icon: Mail },
+    { id: 'organisations', label: 'Organisations', icon: Building2 },
+    { id: 'leads', label: 'Leads', icon: UserCircle },
     { id: 'clients', label: 'Clients', icon: Shield },
+    { id: 'champions', label: 'Champions', icon: Award },
+    { id: 'email', label: 'Email Center', icon: Mail },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

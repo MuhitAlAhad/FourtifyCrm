@@ -81,6 +81,7 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
   const [templateAttachments, setTemplateAttachments] = useState<AttachmentItem[]>([]);
   const templateEditorRef = useRef<HTMLDivElement | null>(null);
   const signatureEditorRef = useRef<HTMLDivElement | null>(null);
+  const skipTemplateSyncRef = useRef(false);
   const [includeTemplateSignature, setIncludeTemplateSignature] = useState(false);
   const [selectedTemplateSignatureId, setSelectedTemplateSignatureId] = useState<string>('');
 
@@ -225,6 +226,18 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
   }, [bodyHtml]);
 
   useEffect(() => {
+    if (!templateEditorRef.current) return;
+    if (skipTemplateSyncRef.current) {
+      skipTemplateSyncRef.current = false;
+      return;
+    }
+    const nextHtml = templateHtmlBody || '';
+    if (templateEditorRef.current.innerHTML !== nextHtml) {
+      templateEditorRef.current.innerHTML = nextHtml;
+    }
+  }, [templateHtmlBody]);
+
+  useEffect(() => {
     if (!success) return;
     const timer = setTimeout(() => setSuccess(null), 4000);
     return () => clearTimeout(timer);
@@ -307,15 +320,98 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
     setToName('');
   };
 
+  const parseAttachmentsFromHtml = (html: string): { cleanHtml: string; attachments: AttachmentItem[] } => {
+    // Parse attachments from HTML body
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const attachments: AttachmentItem[] = [];
+    
+    // Find ALL download links in the entire document (not just in attachment section)
+    const allDownloadLinks = doc.querySelectorAll('a[download]');
+    allDownloadLinks.forEach((link, idx) => {
+      const href = link.getAttribute('href') || '';
+      const filename = link.getAttribute('download') || link.textContent?.trim() || `file-${idx}`;
+      if (href) {
+        const isDataUrl = href.startsWith('data:');
+        const isImage = href.match(/\.(jpg|jpeg|png|gif|svg|webp)$/i) || href.startsWith('data:image/');
+        
+        attachments.push({
+          id: `attachment-${Date.now()}-${idx}`,
+          name: filename,
+          type: isImage ? 'image/png' : 'application/octet-stream',
+          size: isDataUrl ? Math.round(href.length * 0.75) : 1024, // Approximate size
+          dataUrl: href,
+          isImage: isImage,
+        });
+        
+        // Remove the link and its container div from HTML
+        const parent = link.parentElement;
+        if (parent && parent.tagName === 'DIV') {
+          parent.remove();
+        } else {
+          link.remove();
+        }
+      }
+    });
+    
+    // Find and remove the separator if present
+    const hrs = doc.querySelectorAll('hr');
+    hrs.forEach(hr => {
+      const next = hr.nextElementSibling;
+      // If hr is followed by an empty or whitespace-only div, or no sibling, remove it
+      if (!next || (next.tagName === 'DIV' && (!next.textContent || next.textContent.trim() === ''))) {
+        hr.remove();
+        if (next) next.remove();
+      }
+    });
+    
+    return {
+      cleanHtml: doc.body.innerHTML,
+      attachments,
+    };
+  };
+
   const buildHtmlBody = (baseHtml: string, attachments: AttachmentItem[]) => {
     if (attachments.length === 0) return baseHtml;
     const attachmentMarkup = attachments
-      .map((file) =>
-        file.isImage
-          ? `<div style=\"margin:8px 0;\"><img src=\"${file.dataUrl}\" alt=\"${file.name}\" style=\"max-width:100%;height:auto;\" /></div>`
-          : `<div style=\"margin:6px 0;\"><a href=\"${file.dataUrl}\" download=\"${file.name}\">${file.name}</a></div>`
-      )
+      .map((file) => {
+        // Don't embed data URLs for non-images - just provide download links
+        if (file.isImage && file.dataUrl.startsWith('http')) {
+          // For images with hosted URLs, embed them
+          return `<div style=\"margin:8px 0;\"><img src=\"${file.dataUrl}\" alt=\"${file.name}\" style=\"max-width:100%;height:auto;\" /></div>`;
+        } else if (file.isImage && file.dataUrl.startsWith('data:')) {
+          // For images with data URLs (fallback), embed them
+          return `<div style=\"margin:8px 0;\"><img src=\"${file.dataUrl}\" alt=\"${file.name}\" style=\"max-width:100%;height:auto;\" /></div>`;
+        } else {
+          // For files, just provide download link
+          return `<div style=\"margin:6px 0;\"><a href=\"${file.dataUrl}\" download=\"${file.name}\" style=\"color:#00ff88;\">${file.name}</a></div>`;
+        }
+      })
       .join('');
+    const separator = baseHtml ? '<hr style="margin:16px 0;border:0;border-top:1px solid #e5e7eb;" />' : '';
+    return `${baseHtml}${separator}<div>${attachmentMarkup}</div>`;
+  };
+
+  const buildEmailHtmlWithAttachments = (baseHtml: string, attachments: AttachmentItem[]) => {
+    // Only include attachments with hosted URLs (no data URLs to keep email small)
+    const hostedAttachments = attachments.filter(att => 
+      att.dataUrl.startsWith('http') || att.dataUrl.startsWith('https')
+    );
+    
+    if (hostedAttachments.length === 0) return baseHtml;
+    
+    const attachmentMarkup = hostedAttachments
+      .map((file) => {
+        if (file.isImage) {
+          // For images, embed them
+          return `<div style=\"margin:8px 0;\"><img src=\"${file.dataUrl}\" alt=\"${file.name}\" style=\"max-width:100%;height:auto;\" /></div>`;
+        } else {
+          // For files, provide download link
+          return `<div style=\"margin:6px 0;\"><a href=\"${file.dataUrl}\" download=\"${file.name}\" style=\"color:#00ff88;text-decoration:underline;\">${file.name}</a></div>`;
+        }
+      })
+      .join('');
+    
     const separator = baseHtml ? '<hr style="margin:16px 0;border:0;border-top:1px solid #e5e7eb;" />' : '';
     return `${baseHtml}${separator}<div>${attachmentMarkup}</div>`;
   };
@@ -565,27 +661,44 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-    const loaded = await Promise.all(
-      fileArray.map(
-        (file) =>
-          new Promise<AttachmentItem>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              resolve({
-                id: `${file.name}-${file.size}-${file.lastModified}`,
-                name: file.name,
-                type: file.type || 'application/octet-stream',
-                size: file.size,
-                dataUrl: String(reader.result || ''),
-                isImage: file.type.startsWith('image/'),
-              });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          })
-      )
-    );
+    const uploadPromises = fileArray.map(async (file) => {
+      const uploadToast = toast.loading(`Uploading ${file.name}...`);
+      
+      try {
+        // Upload to media API to get hosted URL
+        const result = await mediaApi.upload(file);
+        toast.success(`${file.name} uploaded`, { id: uploadToast });
+        
+        return {
+          id: `${file.name}-${file.size}-${Date.now()}`,
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          size: file.size,
+          dataUrl: result.url, // Use hosted URL instead of data URL
+          isImage: file.type.startsWith('image/'),
+        };
+      } catch (error) {
+        toast.error(`Failed to upload ${file.name}`, { id: uploadToast });
+        // Fallback to data URL if upload fails
+        return new Promise<AttachmentItem>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            resolve({
+              id: `${file.name}-${file.size}-${Date.now()}`,
+              name: file.name,
+              type: file.type || 'application/octet-stream',
+              size: file.size,
+              dataUrl: String(reader.result || ''),
+              isImage: file.type.startsWith('image/'),
+            });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+    });
 
+    const loaded = await Promise.all(uploadPromises);
     setAttachments((prev) => [...prev, ...loaded]);
   };
 
@@ -614,7 +727,8 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
         : '';
       const signatureHtmlBlock = signatureHtml ? `<br/><br/>${signatureHtml}` : '';
       const composedHtml = `${hostedBodyHtml}${signatureHtmlBlock}`;
-      const finalHtml = buildHtmlBody(composedHtml, composeAttachments);
+      // Include attachments with hosted URLs in email HTML
+      const finalHtml = buildEmailHtmlWithAttachments(composedHtml, composeAttachments);
       const textBody = stripHtml(finalHtml);
 
       const result = await emailApi.send({
@@ -695,11 +809,14 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
     setSuccess(null);
 
     try {
+      // Include attachments with hosted URLs in email HTML
+      const finalBulkHtml = buildEmailHtmlWithAttachments(bulkHtmlBody, bulkAttachments);
+      
       const result = await emailApi.bulkSend({
         contactIds: Array.from(selectedContactIds),
         subject: bulkSubject,
         body: bulkBody,
-        htmlBody: buildHtmlBody(bulkHtmlBody, bulkAttachments),
+        htmlBody: finalBulkHtml,
         campaignName: campaignName || undefined,
       });
 
@@ -892,12 +1009,28 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
   };
 
   const useTemplate = (template: EmailTemplate) => {
+    // Parse out attachments from template HTML first
+    const { cleanHtml, attachments } = parseAttachmentsFromHtml(template.htmlBody || '');
+    
+    // Set all state in the right order
     setActiveTab('compose');
     setSubject(template.subject);
     setBody(template.body);
-    setBodyHtml(template.htmlBody || textToHtml(template.body || ''));
-    setComposeAttachments([]);
-    toast.success(`Template "${template.name}" applied!`);
+    
+    // Set body HTML - this will trigger useEffect to update the editor
+    const finalBodyHtml = cleanHtml || textToHtml(template.body || '');
+    setBodyHtml(finalBodyHtml);
+    
+    // Update editor directly to ensure content is visible
+    if (composeEditorRef.current && finalBodyHtml) {
+      composeEditorRef.current.innerHTML = finalBodyHtml;
+    }
+    
+    // Include template attachments so they're sent with the email
+    setComposeAttachments(attachments);
+    
+    const attachmentMsg = attachments.length > 0 ? ` with ${attachments.length} attachment(s)` : '';
+    toast.success(`Template "${template.name}" applied${attachmentMsg}!`);
   };
 
   const editTemplate = (template: EmailTemplate) => {
@@ -905,8 +1038,12 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
     setTemplateName(template.name);
     setTemplateSubject(template.subject);
     setTemplateBody(template.body);
-    setTemplateHtmlBody(template.htmlBody || '');
-    setTemplateAttachments([]);
+    
+    // Parse attachments from HTML body
+    const { cleanHtml, attachments } = parseAttachmentsFromHtml(template.htmlBody || '');
+    setTemplateHtmlBody(cleanHtml);
+    setTemplateAttachments(attachments);
+    
     setIncludeTemplateSignature(false);
     setSelectedTemplateSignatureId('');
     setShowTemplateModal(true);
@@ -1226,9 +1363,33 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
               <Plus size={16} /> Add Files
             </button>
             {composeAttachments.length > 0 && (
-              <div style={{ marginTop: '8px', color: '#9ca3af', fontSize: '13px' }}>
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {composeAttachments.map((file) => (
-                  <div key={file.id}>{file.name} ({Math.round(file.size / 1024)} KB)</div>
+                  <div key={file.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#1a2332', borderRadius: '6px' }}>
+                    <span style={{ color: '#00ff88', fontSize: '13px' }}>
+                      {file.name} ({Math.round(file.size / 1024)} KB)
+                      {file.dataUrl.startsWith('data:') && <span style={{ color: '#f59e0b', marginLeft: '8px' }}>(⚠️ Not uploaded - won't be included in email)</span>}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setConfirmDialog({
+                          isOpen: true,
+                          title: 'Remove Attachment',
+                          message: `Are you sure you want to remove "${file.name}"?`,
+                          onConfirm: () => {
+                            setComposeAttachments(prev => prev.filter(a => a.id !== file.id));
+                            toast.success('Attachment removed');
+                            setConfirmDialog({ ...confirmDialog, isOpen: false });
+                          }
+                        });
+                      }}
+                      style={{ padding: '6px 8px', backgroundColor: '#1f2a3a', border: '1px solid #2a3442', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#ef4444'; e.currentTarget.style.color = 'white'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1f2a3a'; e.currentTarget.style.color = '#ef4444'; }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -1424,9 +1585,33 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
                 style={{ color: 'white' }}
               />
               {bulkAttachments.length > 0 && (
-                <div style={{ marginTop: '8px', color: '#9ca3af', fontSize: '13px' }}>
+                <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   {bulkAttachments.map((file) => (
-                    <div key={file.id}>{file.name} ({Math.round(file.size / 1024)} KB)</div>
+                    <div key={file.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#1a2332', borderRadius: '6px' }}>
+                      <span style={{ color: '#00ff88', fontSize: '13px' }}>
+                        {file.name} ({Math.round(file.size / 1024)} KB)
+                        {file.dataUrl.startsWith('data:') && <span style={{ color: '#f59e0b', marginLeft: '8px' }}>(⚠️ Not uploaded - won't be included in email)</span>}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setConfirmDialog({
+                            isOpen: true,
+                            title: 'Remove Attachment',
+                            message: `Are you sure you want to remove "${file.name}"?`,
+                            onConfirm: () => {
+                              setBulkAttachments(prev => prev.filter(a => a.id !== file.id));
+                              toast.success('Attachment removed');
+                              setConfirmDialog({ ...confirmDialog, isOpen: false });
+                            }
+                          });
+                        }}
+                        style={{ padding: '6px 8px', backgroundColor: '#1f2a3a', border: '1px solid #2a3442', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#ef4444'; e.currentTarget.style.color = 'white'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1f2a3a'; e.currentTarget.style.color = '#ef4444'; }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1492,129 +1677,176 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
 
           {/* Template Modal */}
           {showTemplateModal && (
-            <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-              <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '600px' }}>
-                <h2 style={{ fontSize: '20px', color: 'white', marginBottom: '24px' }}>{editingTemplate ? 'Edit Template' : 'New Template'}</h2>
-
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Template Name</label>
-                  <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g., Welcome Email" style={inputStyle} />
+            <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 50, padding: '40px 16px', overflowY: 'auto' }} onClick={(e) => { if (e.target === e.currentTarget) { setShowTemplateModal(false); setEditingTemplate(null); setIncludeTemplateSignature(false); setSelectedTemplateSignatureId(''); } }}>
+              <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '700px', maxHeight: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', margin: 'auto' }}>
+                {/* Header with Close Button */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '20px', color: 'white', margin: 0 }}>{editingTemplate ? 'Edit Template' : 'New Template'}</h2>
+                  <button
+                    onClick={() => { setShowTemplateModal(false); setEditingTemplate(null); setIncludeTemplateSignature(false); setSelectedTemplateSignatureId(''); }}
+                    style={{ padding: '8px', backgroundColor: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', transition: 'all 0.2s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1a2332'; e.currentTarget.style.color = 'white'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
 
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Subject</label>
-                  <input type="text" value={templateSubject} onChange={(e) => setTemplateSubject(e.target.value)} placeholder="Email subject" style={inputStyle} />
-                </div>
-
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Body</label>
-                  <div style={{ position: 'relative' }}>
-                    {!templateHtmlBody && (!templateEditorRef.current || templateEditorRef.current.innerText.trim().length === 0) && (
-                      <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
-                        Write your template... (paste images directly)
-                      </div>
-                    )}
-                    <div
-                      ref={templateEditorRef}
-                      contentEditable
-                      dir="ltr"
-                      onInput={(e) => {
-                        const html = (e.currentTarget as HTMLDivElement).innerHTML;
-                        setTemplateHtmlBody(html);
-                        setTemplateBody(stripHtml(html));
-                      }}
-                      onPaste={(e) => handlePasteToEditor(e, templateEditorRef, (html) => {
-                        setTemplateHtmlBody(html);
-                        setTemplateBody(stripHtml(html));
-                      })}
-                      style={{
-                        ...inputStyle,
-                        minHeight: '220px',
-                        paddingTop: '12px',
-                        paddingBottom: '12px',
-                        overflowY: 'auto',
-                        lineHeight: '1.5',
-                        direction: 'ltr',
-                        unicodeBidi: 'embed',
-                        textAlign: 'left',
-                        writingMode: 'horizontal-tb',
-                      }}
-                      dangerouslySetInnerHTML={{ __html: templateHtmlBody || textToHtml(templateBody || '') }}
-                    />
+                {/* Scrollable Content */}
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px', marginBottom: '24px' }}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Template Name</label>
+                    <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g., Welcome Email" style={inputStyle} />
                   </div>
-                  {includeTemplateSignature && selectedTemplateSignatureId && (
-                    <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#0b1220', border: '1px solid #1f2a3a', borderRadius: '8px' }}>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Subject</label>
+                    <input type="text" value={templateSubject} onChange={(e) => setTemplateSubject(e.target.value)} placeholder="Email subject" style={inputStyle} />
+                  </div>
+
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Body</label>
+                    <div style={{ position: 'relative' }}>
+                      {!templateHtmlBody && (!templateEditorRef.current || templateEditorRef.current.innerText.trim().length === 0) && (
+                        <div style={{ position: 'absolute', top: '12px', left: '16px', color: '#6b7280', pointerEvents: 'none', fontSize: '16px' }}>
+                          Write your template... (paste images directly)
+                        </div>
+                      )}
                       <div
-                        style={{ color: 'white', fontSize: '14px' }}
-                        dangerouslySetInnerHTML={{
-                          __html: signatures.find(sig => sig.id === selectedTemplateSignatureId)?.html || '',
+                        ref={templateEditorRef}
+                        contentEditable
+                        dir="ltr"
+                        onInput={(e) => {
+                          skipTemplateSyncRef.current = true;
+                          const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                          setTemplateHtmlBody(html);
+                          setTemplateBody(stripHtml(html));
+                        }}
+                        onPaste={(e) => handlePasteToEditor(e, templateEditorRef, (html) => {
+                          skipTemplateSyncRef.current = true;
+                          setTemplateHtmlBody(html);
+                          setTemplateBody(stripHtml(html));
+                        })}
+                        style={{
+                          ...inputStyle,
+                          minHeight: '220px',
+                          paddingTop: '12px',
+                          paddingBottom: '12px',
+                          overflowY: 'auto',
+                          lineHeight: '1.5',
+                          direction: 'ltr',
+                          unicodeBidi: 'embed',
+                          textAlign: 'left',
+                          writingMode: 'horizontal-tb',
                         }}
                       />
                     </div>
-                  )}
-                </div>
+                    {includeTemplateSignature && selectedTemplateSignatureId && (
+                      <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#0b1220', border: '1px solid #1f2a3a', borderRadius: '8px' }}>
+                        <div
+                          style={{ color: 'white', fontSize: '14px' }}
+                          dangerouslySetInnerHTML={{
+                            __html: signatures.find(sig => sig.id === selectedTemplateSignatureId)?.html || '',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
 
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '14px' }}>
-                    <input
-                      type="checkbox"
-                      checked={includeTemplateSignature}
-                      onChange={(e) => setIncludeTemplateSignature(e.target.checked)}
-                    />
-                    Add signature
-                  </label>
-                  <select
-                    value={selectedTemplateSignatureId}
-                    onChange={(e) => setSelectedTemplateSignatureId(e.target.value)}
-                    style={{ padding: '10px 12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', minWidth: '200px' }}
-                  >
-                    <option value="">Select signature</option>
-                    {signatures.map(sig => (
-                      <option key={sig.id} value={sig.id}>{sig.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingSignatureId(null);
-                      setSignatureName('');
-                      setSignatureHtml('');
-                      setShowSignatureModal(true);
-                    }}
-                    style={{ padding: '10px 14px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
-                  >
-                    Manage Signatures
-                  </button>
-                </div>
-
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Attachments (images, PDFs, spreadsheets)</label>
-                  <input
-                    id="template-attachments"
-                    type="file"
-                    multiple
-                    onChange={(e) => handleFileUpload(e.target.files, setTemplateAttachments)}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('template-attachments')?.click()}
-                    style={{ padding: '12px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    <Plus size={16} /> Add Files
-                  </button>
-                  {templateAttachments.length > 0 && (
-                    <div style={{ marginTop: '8px', color: '#9ca3af', fontSize: '13px' }}>
-                      {templateAttachments.map((file) => (
-                        <div key={file.id}>{file.name} ({Math.round(file.size / 1024)} KB)</div>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '14px' }}>
+                      <input
+                        type="checkbox"
+                        checked={includeTemplateSignature}
+                        onChange={(e) => setIncludeTemplateSignature(e.target.checked)}
+                      />
+                      Add signature
+                    </label>
+                    <select
+                      value={selectedTemplateSignatureId}
+                      onChange={(e) => setSelectedTemplateSignatureId(e.target.value)}
+                      style={{ padding: '10px 12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', minWidth: '200px' }}
+                    >
+                      <option value="">Select signature</option>
+                      {signatures.map(sig => (
+                        <option key={sig.id} value={sig.id}>{sig.name}</option>
                       ))}
-                    </div>
-                  )}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSignatureId(null);
+                        setSignatureName('');
+                        setSignatureHtml('');
+                        setShowSignatureModal(true);
+                      }}
+                      style={{ padding: '10px 14px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
+                    >
+                      Manage Signatures
+                    </button>
+                  </div>
+
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', color: '#9ca3af', fontSize: '14px', marginBottom: '8px' }}>Attachments (images, PDFs, spreadsheets)</label>
+                    <input
+                      id="template-attachments"
+                      type="file"
+                      multiple
+                      onChange={(e) => handleFileUpload(e.target.files, setTemplateAttachments)}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('template-attachments')?.click()}
+                      style={{ padding: '12px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <Plus size={16} /> Add Files
+                    </button>
+                    {templateAttachments.length > 0 && (
+                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {templateAttachments.map((file) => (
+                          <div key={file.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#1a2332', borderRadius: '6px' }}>
+                            <span style={{ color: '#00ff88', fontSize: '13px' }}>{file.name} ({Math.round(file.size / 1024)} KB)</span>
+                            <button
+                              onClick={() => {
+                                setConfirmDialog({
+                                  isOpen: true,
+                                  title: 'Remove Attachment',
+                                  message: `Are you sure you want to remove "${file.name}" from this template?`,
+                                  onConfirm: () => {
+                                    setTemplateAttachments(prev => prev.filter(a => a.id !== file.id));
+                                    toast.success('Attachment removed');
+                                    setConfirmDialog({ ...confirmDialog, isOpen: false });
+                                  }
+                                });
+                              }}
+                              style={{ padding: '6px 8px', backgroundColor: '#1f2a3a', border: '1px solid #2a3442', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#ef4444'; e.currentTarget.style.color = 'white'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#1f2a3a'; e.currentTarget.style.color = '#ef4444'; }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                  <button onClick={() => { setShowTemplateModal(false); setEditingTemplate(null); setIncludeTemplateSignature(false); setSelectedTemplateSignatureId(''); }} style={{ padding: '12px 24px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
-                  <button onClick={handleSaveTemplate} style={{ padding: '12px 24px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>{editingTemplate ? 'Update' : 'Create'}</button>
+                {/* Footer Buttons */}
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #1a2332' }}>
+                  <button
+                    onClick={() => { setShowTemplateModal(false); setEditingTemplate(null); setIncludeTemplateSignature(false); setSelectedTemplateSignatureId(''); setTemplateName(''); setTemplateSubject(''); setTemplateBody(''); setTemplateHtmlBody(''); setTemplateAttachments([]); }}
+                    style={{ padding: '12px 24px', backgroundColor: '#1a2332', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '500' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveTemplate}
+                    style={{ padding: '12px 24px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
+                  >
+                    {editingTemplate ? 'Update' : 'Create'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1728,145 +1960,165 @@ export function EmailCenterPage({ prefilledRecipient, onClearRecipient }: EmailC
 
       {/* Signature Manager Modal */}
       {showSignatureModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
-          <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '24px', width: '100%', maxWidth: '720px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 60, padding: '40px 16px', overflowY: 'auto' }} onClick={(e) => { if (e.target === e.currentTarget) setShowSignatureModal(false); }}>
+          <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', padding: '24px', width: '100%', maxWidth: '720px', maxHeight: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', margin: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ color: 'white', margin: 0 }}>Signatures</h2>
-              <button onClick={() => setShowSignatureModal(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '20px' }}>×</button>
+              <button
+                onClick={() => setShowSignatureModal(false)}
+                style={{ padding: '8px', backgroundColor: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', transition: 'all 0.2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1a2332'; e.currentTarget.style.color = 'white'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}
+              >
+                <X size={20} />
+              </button>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Signature Name</label>
-              <input
-                type="text"
-                value={signatureName}
-                onChange={(e) => setSignatureName(e.target.value)}
-                placeholder="e.g., Default Signature"
-                style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
-              />
-            </div>
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Signature Name</label>
+                <input
+                  type="text"
+                  value={signatureName}
+                  onChange={(e) => setSignatureName(e.target.value)}
+                  placeholder="e.g., Default Signature"
+                  style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
+                />
+              </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Signature Content (paste images)</label>
-              {pendingUploads > 0 && (
-                <div style={{ marginBottom: '8px', color: '#f59e0b', fontSize: '12px' }}>
-                  Uploading images... please wait before saving.
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Signature Content (paste images)</label>
+                {pendingUploads > 0 && (
+                  <div style={{ marginBottom: '8px', color: '#f59e0b', fontSize: '12px' }}>
+                    Uploading images... please wait before saving.
+                  </div>
+                )}
+                <div
+                  ref={signatureEditorRef}
+                  contentEditable
+                  dir="ltr"
+                  onFocus={saveSignatureSelection}
+                  onKeyUp={saveSignatureSelection}
+                  onMouseUp={saveSignatureSelection}
+                  onInput={(e) => {
+                    skipSignatureSyncRef.current = true;
+                    setSignatureHtml((e.currentTarget as HTMLDivElement).innerHTML);
+                  }}
+                  onPaste={(e) => handlePasteToEditor(e, signatureEditorRef, (html) => {
+                    skipSignatureSyncRef.current = true;
+                    setSignatureHtml(html);
+                  }, true)}
+                  style={{
+                    minHeight: '140px',
+                    padding: '12px',
+                    backgroundColor: '#1a2332',
+                    border: '1px solid #2a3442',
+                    borderRadius: '8px',
+                    color: 'white',
+                    lineHeight: '1.5',
+                    direction: 'ltr',
+                    unicodeBidi: 'embed',
+                    textAlign: 'left',
+                    writingMode: 'horizontal-tb',
+                  }}
+                  suppressContentEditableWarning
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '12px' }}>
+                Pasted images are automatically hosted so they display properly in email clients.
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                <button
+                  onClick={async () => {
+                    if (!signatureName.trim()) {
+                      setError('Signature name is required');
+                      return;
+                    }
+                    if (hasUnhostedImages(signatureHtml)) {
+                      setError('Please wait for image upload to finish before saving the signature.');
+                      return;
+                    }
+                    const cleanedSignatureHtml = normalizeSignatureHtml(signatureHtml);
+                    let hostedSignatureHtml = cleanedSignatureHtml;
+                    try {
+                      hostedSignatureHtml = await ensureHostedImagesInHtml(cleanedSignatureHtml);
+                    } catch (err) {
+                      setError('Failed to upload signature image. Please try again.');
+                      return;
+                    }
+                    if (editingSignatureId) {
+                      setSignatures(prev => prev.map(sig => sig.id === editingSignatureId ? { ...sig, name: signatureName, html: hostedSignatureHtml } : sig));
+                      toast.success('Signature updated successfully');
+                    } else {
+                      setSignatures(prev => [...prev, { id: `sig:${Date.now()}`, name: signatureName, html: hostedSignatureHtml }]);
+                      toast.success('Signature created successfully');
+                    }
+                    setSignatureName('');
+                    setSignatureHtml('');
+                    setEditingSignatureId(null);
+                  }}
+                  style={{ padding: '10px 16px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+                >
+                  {editingSignatureId ? 'Update Signature' : 'Save Signature'}
+                </button>
+                <button
+                  onClick={() => {
+                    setSignatureName('');
+                    setSignatureHtml('');
+                    setEditingSignatureId(null);
+                  }}
+                  style={{ padding: '10px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Clear
+                </button>
+              </div>
+
+              {signatures.length > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <h3 style={{ color: 'white', fontSize: '16px', marginBottom: '8px' }}>Saved Signatures</h3>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {signatures.map(sig => (
+                      <div key={sig.id} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: 'white', fontWeight: '600', marginBottom: '4px' }}>{sig.name}</div>
+                          <div style={{ color: '#9ca3af', fontSize: '12px' }} dangerouslySetInnerHTML={{ __html: sig.html }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => {
+                              setEditingSignatureId(sig.id);
+                              setSignatureName(sig.name);
+                              setSignatureHtml(sig.html);
+                            }}
+                            style={{ padding: '6px 10px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '6px', cursor: 'pointer' }}
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setConfirmDialog({
+                                isOpen: true,
+                                title: 'Delete Signature',
+                                message: `Are you sure you want to delete "${sig.name}"? This action cannot be undone.`,
+                                onConfirm: () => {
+                                  setSignatures(prev => prev.filter(s => s.id !== sig.id));
+                                  toast.success('Signature deleted successfully');
+                                },
+                              });
+                            }}
+                            style={{ padding: '6px 10px', backgroundColor: '#1a2332', color: '#ef4444', border: '1px solid #2a3442', borderRadius: '6px', cursor: 'pointer' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-              <div
-                ref={signatureEditorRef}
-                contentEditable
-                dir="ltr"
-                onFocus={saveSignatureSelection}
-                onKeyUp={saveSignatureSelection}
-                onMouseUp={saveSignatureSelection}
-                onInput={(e) => {
-                  skipSignatureSyncRef.current = true;
-                  setSignatureHtml((e.currentTarget as HTMLDivElement).innerHTML);
-                }}
-                onPaste={(e) => handlePasteToEditor(e, signatureEditorRef, (html) => {
-                  skipSignatureSyncRef.current = true;
-                  setSignatureHtml(html);
-                }, true)}
-                style={{
-                  minHeight: '140px',
-                  padding: '12px',
-                  backgroundColor: '#1a2332',
-                  border: '1px solid #2a3442',
-                  borderRadius: '8px',
-                  color: 'white',
-                  lineHeight: '1.5',
-                  direction: 'ltr',
-                  unicodeBidi: 'embed',
-                  textAlign: 'left',
-                  writingMode: 'horizontal-tb',
-                }}
-                suppressContentEditableWarning
-              />
             </div>
-
-            <div style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '12px' }}>
-              Pasted images are automatically hosted so they display properly in email clients.
-            </div>
-
-
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-              <button
-                onClick={async () => {
-                  if (!signatureName.trim()) {
-                    setError('Signature name is required');
-                    return;
-                  }
-                  if (hasUnhostedImages(signatureHtml)) {
-                    setError('Please wait for image upload to finish before saving the signature.');
-                    return;
-                  }
-                  const cleanedSignatureHtml = normalizeSignatureHtml(signatureHtml);
-                  let hostedSignatureHtml = cleanedSignatureHtml;
-                  try {
-                    hostedSignatureHtml = await ensureHostedImagesInHtml(cleanedSignatureHtml);
-                  } catch (err) {
-                    setError('Failed to upload signature image. Please try again.');
-                    return;
-                  }
-                  if (editingSignatureId) {
-                    setSignatures(prev => prev.map(sig => sig.id === editingSignatureId ? { ...sig, name: signatureName, html: hostedSignatureHtml } : sig));
-                  } else {
-                    setSignatures(prev => [...prev, { id: `sig:${Date.now()}`, name: signatureName, html: hostedSignatureHtml }]);
-                  }
-                  setSignatureName('');
-                  setSignatureHtml('');
-                  setEditingSignatureId(null);
-                }}
-                style={{ padding: '10px 16px', backgroundColor: '#00ff88', color: '#0f1623', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
-              >
-                {editingSignatureId ? 'Update Signature' : 'Save Signature'}
-              </button>
-              <button
-                onClick={() => {
-                  setSignatureName('');
-                  setSignatureHtml('');
-                  setEditingSignatureId(null);
-                }}
-                style={{ padding: '10px 16px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '8px', cursor: 'pointer' }}
-              >
-                Clear
-              </button>
-            </div>
-
-            {signatures.length > 0 && (
-              <div style={{ marginTop: '16px' }}>
-                <h3 style={{ color: 'white', fontSize: '16px', marginBottom: '8px' }}>Saved Signatures</h3>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {signatures.map(sig => (
-                    <div key={sig.id} style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: 'white', fontWeight: '600', marginBottom: '4px' }}>{sig.name}</div>
-                        <div style={{ color: '#9ca3af', fontSize: '12px' }} dangerouslySetInnerHTML={{ __html: sig.html }} />
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={() => {
-                            setEditingSignatureId(sig.id);
-                            setSignatureName(sig.name);
-                            setSignatureHtml(sig.html);
-                          }}
-                          style={{ padding: '6px 10px', backgroundColor: '#1a2332', color: 'white', border: '1px solid #2a3442', borderRadius: '6px', cursor: 'pointer' }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => setSignatures(prev => prev.filter(s => s.id !== sig.id))}
-                          style={{ padding: '6px 10px', backgroundColor: '#1a2332', color: '#ef4444', border: '1px solid #2a3442', borderRadius: '6px', cursor: 'pointer' }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

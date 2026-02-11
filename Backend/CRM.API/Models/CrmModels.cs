@@ -952,3 +952,55 @@ public class Payment
     public Invoice? Invoice { get; set; }
 }
 
+[Table("champions")]
+public class Champion
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = $"champion:{Guid.NewGuid()}";
+    
+    [Required]
+    [Column("name")]
+    public string Name { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("email")]
+    public string Email { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("phone")]
+    public string Phone { get; set; } = string.Empty;
+    
+    [Column("role")]
+    public string Role { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("organization_name")]
+    public string OrganizationName { get; set; } = string.Empty;
+    
+    [Required]
+    [Column("address")]
+    public string Address { get; set; } = string.Empty;
+    
+    [Column("allocated_sale")]
+    public int AllocatedSale { get; set; } = 0;
+    
+    [Column("active_clients")]
+    public int ActiveClients { get; set; } = 0;
+    
+    [Column("conversion_rate")]
+    public decimal ConversionRate { get; set; } = 0;
+    
+    [Column("performance_score")]
+    public decimal PerformanceScore { get; set; } = 0;
+    
+    [Column("last_activity")]
+    public DateTime LastActivity { get; set; } = DateTime.UtcNow;
+    
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
+}
+

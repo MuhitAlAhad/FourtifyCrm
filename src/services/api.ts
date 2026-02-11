@@ -1,7 +1,7 @@
 // CRM API Configuration and Service
 // Replace the mock data imports in your components with these API calls
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5122/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_URL || API_BASE_URL;
 
 // Helper function for API calls
@@ -148,6 +148,35 @@ export interface CreatePaymentRequest {
     paymentDate?: string;
     reference?: string;
     notes?: string;
+}
+
+export interface Champion {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+    organizationName: string;
+    address: string;
+    allocatedSale: number;
+    activeClients: number;
+    conversionRate: number;
+    performanceScore: number;
+    lastActivity: string;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface CreateChampionRequest {
+    name: string;
+    email: string;
+    phone: string;
+    role?: string;
+    organizationName: string;
+    address: string;
+    allocatedSale: number;
+    activeClients: number;
+    performanceScore: number;
 }
 
 export interface Lead {
@@ -337,6 +366,20 @@ export const emailApi = {
 
 export const mediaApi = {
     uploadImage: async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch(`${MEDIA_BASE_URL}/uploads`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || `API Error: ${response.status}`);
+        }
+        return response.json() as Promise<{ url: string }>;
+    },
+    upload: async (file: File) => {
         const formData = new FormData();
         formData.append('file', file);
         const response = await fetch(`${MEDIA_BASE_URL}/uploads`, {
@@ -664,6 +707,38 @@ export const paymentApi = {
         }>(`/payments/stats${clientId ? '?clientId=' + clientId : ''}`),
 };
 
+export const championApi = {
+    getAll: (role?: string, search?: string) => {
+        const params = new URLSearchParams();
+        if (role) params.append('role', role);
+        if (search) params.append('search', search);
+        return apiFetch<{ champions: Champion[] }>(`/champions${params.toString() ? '?' + params.toString() : ''}`);
+    },
+    getById: (id: string) =>
+        apiFetch<Champion>(`/champions/${id}`),
+    create: (data: CreateChampionRequest) =>
+        apiFetch<Champion>('/champions', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+    update: (id: string, data: Partial<CreateChampionRequest>) =>
+        apiFetch<Champion>(`/champions/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+    delete: (id: string) =>
+        apiFetch<void>(`/champions/${id}`, { method: 'DELETE' }),
+    getStats: () =>
+        apiFetch<{
+            totalChampions: number;
+            totalTargetedClients: number;
+            totalActiveClients: number;
+            averageConversionRate: number;
+            averagePerformanceScore: number;
+            topPerformers: Array<{ id: string; name: string; performanceScore: number }>;
+        }>('/champions/stats'),
+};
+
 export default {
     organisations: organisationApi,
     contacts: contactApi,
@@ -678,4 +753,5 @@ export default {
     clients: clientApi,
     invoices: invoiceApi,
     payments: paymentApi,
+    champions: championApi,
 };
