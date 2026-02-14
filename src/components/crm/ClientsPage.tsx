@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Shield, Building2, DollarSign, Calendar, Plus, X, Edit2, Trash2, FileText, CreditCard, Receipt, Filter, Mail, RefreshCw } from 'lucide-react';
-import { clientApi, Client, CreateClientRequest, contactApi, invoiceApi, paymentApi, Invoice, Payment, CreateInvoiceRequest, CreatePaymentRequest, InvoiceLineItem } from '../../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Shield, Building2, DollarSign, Calendar, Plus, X, Edit2, Trash2, FileText, CreditCard, Receipt, Filter, Mail, RefreshCw, Star } from 'lucide-react';
+import { clientApi, Client, CreateClientRequest, contactApi, invoiceApi, paymentApi, Invoice, Payment, CreateInvoiceRequest, CreatePaymentRequest, InvoiceLineItem, championApi } from '../../services/api';
 import api from '../../services/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { SortableHeader, SortConfig, toggleSort, sortData } from '../ui/SortableHeader';
 import logo from '../../assets/35f931b802bf39733103d00f96fb6f9c21293f6e.png';
 
 type ClientRow = Client & { sourceType?: 'client' | 'contact' };
@@ -15,8 +16,14 @@ export function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => toggleSort(prev, key));
+  };
   const [showModal, setShowModal] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
+  const [championEmails, setChampionEmails] = useState<Set<string>>(new Set());
   
   // Financial management state
   const [showFinancialModal, setShowFinancialModal] = useState(false);
@@ -76,6 +83,7 @@ export function ClientsPage() {
   useEffect(() => {
     loadClients();
     loadOrganisations();
+    loadChampionEmails();
   }, []);
 
   const loadClients = async () => {
@@ -96,11 +104,11 @@ export function ClientsPage() {
       // Store contacts for lookup
       setContacts(allContacts);
       
-      // Filter contacts with status "converted" and map them to Client format
-      // ONLY include converted contacts if there's NO real client for that organization yet
+      // Filter contacts with status "client" or "client-expansion" and map them to Client format
+      // ONLY include client contacts if there's NO real client for that organization yet
       const convertedContacts: ClientRow[] = allContacts
         .filter((contact: any) => {
-          if (contact.status !== 'converted') return false;
+          if (contact.status !== 'client' && contact.status !== 'client-expansion') return false;
           // Check if a real client already exists for this organization
           const hasRealClient = actualClients.some((c: ClientRow) => c.organisationId === contact.organisationId);
           return !hasRealClient; // Only include if there's NO real client
@@ -143,6 +151,68 @@ export function ClientsPage() {
     } catch (error) {
       console.error('Failed to load organisations:', error);
     }
+  };
+
+  const loadChampionEmails = async () => {
+    try {
+      const response = await championApi.getAll();
+      const emails = new Set(response.champions.map((c: any) => c.email));
+      setChampionEmails(emails);
+    } catch (err) {
+      console.error('Error loading champions:', err);
+    }
+  };
+
+  const toggleChampion = (client: ClientRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Get the primary contact for this client's organisation
+    const orgContacts = contacts.filter((c: any) => c.organisationId === client.organisationId);
+    const primaryContact = orgContacts.find((c: any) => c.isPrimary) || orgContacts[0];
+    const contactEmail = primaryContact?.email || '';
+    const contactName = primaryContact ? `${primaryContact.firstName} ${primaryContact.lastName}` : (client.organisationName || 'Unknown');
+    const contactPhone = primaryContact?.phone || primaryContact?.mobile || '';
+    
+    if (!contactEmail) {
+      toast.error('No contact email found for this client');
+      return;
+    }
+    
+    const isChampion = championEmails.has(contactEmail);
+    setConfirmDialog({
+      isOpen: true,
+      title: isChampion ? 'Remove Champion' : 'Make Champion',
+      message: isChampion
+        ? `Are you sure you want to remove ${contactName} from the Champions list?`
+        : `Are you sure you want to make ${contactName} a Champion?`,
+      variant: 'champion',
+      onConfirm: async () => {
+        try {
+          if (isChampion) {
+            await championApi.removeChampion(contactEmail);
+            setChampionEmails(prev => {
+              const next = new Set(prev);
+              next.delete(contactEmail);
+              return next;
+            });
+            toast.success(`${contactName} removed from Champions`);
+          } else {
+            await championApi.makeChampion({
+              name: contactName,
+              email: contactEmail,
+              phone: contactPhone,
+              organizationName: client.organisationName || '',
+              sourceType: 'client',
+              sourceId: client.id,
+            });
+            setChampionEmails(prev => new Set(prev).add(contactEmail));
+            toast.success(`${contactName} added as Champion!`);
+          }
+        } catch (err: any) {
+          console.error('Error toggling champion:', err);
+          toast.error(err?.message || 'Failed to update champion status');
+        }
+      },
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -600,12 +670,30 @@ export function ClientsPage() {
     return colors[status] || colors.active;
   };
 
-  const filteredClients = clients.filter(client => {
-    const name = client.organisationName || '';
-    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || client.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  const filteredClients = useMemo(() => {
+    const filtered = clients.filter(client => {
+      const name = client.organisationName || '';
+      const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = filterStatus === 'all' || client.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    });
+    return sortData(filtered, sortConfig, (client, key) => {
+      switch (key) {
+        case 'organisation': return client.organisationName || '';
+        case 'contact': {
+          const orgC = contacts.filter((c: any) => c.organisationId === client.organisationId);
+          const pc = orgC.find((c: any) => c.isPrimary) || orgC[0];
+          return pc ? `${pc.firstName} ${pc.lastName}` : '';
+        }
+        case 'plan': return client.plan || '';
+        case 'status': return client.status || '';
+        case 'mrr': return client.mrr || 0;
+        case 'disp': return client.dispCompliant ? 1 : 0;
+        case 'contract': return client.contractStart ? new Date(client.contractStart).getTime() : 0;
+        default: return '';
+      }
+    });
+  }, [clients, searchQuery, filterStatus, sortConfig, contacts]);
 
   const activeClients = clients.filter(c => c.status === 'active');
   const totalMRR = activeClients.reduce((sum, c) => sum + (c.mrr || 0), 0);
@@ -698,13 +786,13 @@ export function ClientsPage() {
         <table className="w-full">
           <thead className="bg-[#1a2332]">
             <tr>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">Organisation</th>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">Contact</th>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">Plan</th>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">Status</th>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">MRR</th>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">DISP</th>
-              <th className="text-left px-6 py-4 text-sm text-gray-400">Contract</th>
+              <SortableHeader label="Organisation" sortKey="organisation" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+              <SortableHeader label="Contact" sortKey="contact" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+              <SortableHeader label="Plan" sortKey="plan" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+              <SortableHeader label="Status" sortKey="status" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+              <SortableHeader label="MRR" sortKey="mrr" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+              <SortableHeader label="DISP" sortKey="disp" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+              <SortableHeader label="Contract" sortKey="contract" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
               <th className="text-left px-6 py-4 text-sm text-gray-400">Actions</th>
             </tr>
           </thead>
@@ -754,6 +842,29 @@ export function ClientsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex gap-2">
+                      <button
+                        onClick={(e) => toggleChampion(client, e)}
+                        title={(() => {
+                          const orgC = contacts.filter((c: any) => c.organisationId === client.organisationId);
+                          const pc = orgC.find((c: any) => c.isPrimary) || orgC[0];
+                          const email = pc?.email || '';
+                          return championEmails.has(email) ? 'Remove Champion' : 'Make Champion';
+                        })()}
+                        className="p-2 transition-colors"
+                        style={{
+                          color: (() => {
+                            const orgC = contacts.filter((c: any) => c.organisationId === client.organisationId);
+                            const pc = orgC.find((c: any) => c.isPrimary) || orgC[0];
+                            return championEmails.has(pc?.email || '') ? '#facc15' : '#6b7280';
+                          })(),
+                        }}
+                      >
+                        <Star className="w-4 h-4" fill={(() => {
+                          const orgC = contacts.filter((c: any) => c.organisationId === client.organisationId);
+                          const pc = orgC.find((c: any) => c.isPrimary) || orgC[0];
+                          return championEmails.has(pc?.email || '') ? '#facc15' : 'none';
+                        })()} />
+                      </button>
                       <button 
                         onClick={() => openFinancialModal(client)} 
                         className="p-2 text-gray-400 hover:text-[#00ff88]"
@@ -1067,8 +1178,8 @@ export function ClientsPage() {
                   ) : (
                     <div className="space-y-3">
                       {filteredInvoices.map((invoice) => (
-                        <div key={invoice.id} className="bg-[#1a2332] rounded-lg p-5 hover:bg-[#1f2937] transition-all border border-[#2a3442] hover:border-[#00ff88]/30 group">
-                          <div className="flex justify-between items-start gap-4">
+                        <div key={invoice.id} className="bg-[#1a2332] rounded-xl p-6 hover:bg-[#1f2937] transition-all border border-[#2a3442] hover:border-[#00ff88]/30 group">
+                          <div className="flex justify-between items-start gap-6">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-3 mb-3">
                                 <span className="text-white font-semibold text-lg">{invoice.invoiceNumber}</span>
@@ -1089,16 +1200,16 @@ export function ClientsPage() {
                               </div>
                               
                               {invoice.description && (
-                                <p className="text-gray-400 text-sm mb-3 line-clamp-1">{invoice.description}</p>
+                                <p className="text-gray-400 text-sm mb-4 line-clamp-1">{invoice.description}</p>
                               )}
                               
                               {/* Line Items Preview */}
                               {invoice.lineItems && invoice.lineItems.length > 0 && (
-                                <div className="mb-3 space-y-1">
+                                <div className="mb-4 space-y-1.5 pl-1">
                                   {invoice.lineItems.slice(0, 2).map((item, idx) => (
                                     <div key={idx} className="text-xs text-gray-500 flex justify-between">
                                       <span className="truncate">{item.quantity}x {item.description}</span>
-                                      <span className="text-gray-400 ml-2">${item.total.toFixed(2)}</span>
+                                      <span className="text-gray-400 ml-4">${item.total.toFixed(2)}</span>
                                     </div>
                                   ))}
                                   {invoice.lineItems.length > 2 && (
@@ -1107,7 +1218,7 @@ export function ClientsPage() {
                                 </div>
                               )}
                               
-                              <div className="flex flex-wrap items-center gap-4 text-sm">
+                              <div className="flex flex-wrap items-center gap-5 text-sm pt-3 border-t border-[#2a3442]/60">
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-gray-500">Subtotal:</span>
                                   <span className="text-white font-medium">${invoice.amount.toFixed(2)}</span>

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Mail, Phone, Building2, Eye, Trash2, X, AlertCircle, RefreshCw, Clock, User } from 'lucide-react';
-import { contactApi, organisationApi, ContactActivity } from '../../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Search, Mail, Phone, Building2, Eye, Trash2, X, AlertCircle, RefreshCw, Clock, User, Star } from 'lucide-react';
+import { contactApi, organisationApi, championApi, ContactActivity } from '../../services/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { SortableHeader, SortConfig, toggleSort, sortData } from '../ui/SortableHeader';
 
 interface ContactDisplay {
   id: string;
@@ -27,6 +28,18 @@ interface ContactsPageProps {
   onSendEmail?: (email: string, name: string) => void;
 }
 
+const FUNNEL_STAGES = [
+  { value: 'contact', label: 'Contact', description: 'Known organisation or individual. No confirmed interest.' },
+  { value: 'contact-engaged', label: 'Contact Engaged', description: 'Contact has been made (email, call, website click, event discussion).' },
+  { value: 'lead', label: 'Lead', description: 'Explicit interest expressed (enquiry, demo request, referral).' },
+  { value: 'lead-qualified', label: 'Lead - Qualified', description: 'Lead validated as relevant (Defence context, DISP requirement, authority or influence identified).' },
+  { value: 'lead-proposal', label: 'Lead - Proposal', description: 'Proposal issued or active evaluation underway.' },
+  { value: 'client', label: 'Client', description: 'Agreement executed; revenue secured.' },
+  { value: 'client-expansion', label: 'Client Expansion', description: 'Upsell, cross-sell, or renewal activity.' },
+  { value: 'champion', label: 'Champion', description: 'Client / reseller / friendly that has made a referral or shared a post.' },
+  { value: 'disqualified', label: 'Disqualified', description: 'Rejects the approach at any stage, no further contact.' },
+];
+
 export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}) {
   const [contacts, setContacts] = useState<ContactDisplay[]>([]);
   const [organisations, setOrganisations] = useState<{ id: string; name: string }[]>([]);
@@ -39,6 +52,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editContactId, setEditContactId] = useState<string | null>(null);
+  const [championEmails, setChampionEmails] = useState<Set<string>>(new Set());
   const [editForm, setEditForm] = useState({
     firstName: '',
     lastName: '',
@@ -52,13 +66,20 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     isPrimary: false,
     notes: '',
     linkedin: '',
-    status: 'new',
+    status: 'contact',
   });
   const [originalOrgId, setOriginalOrgId] = useState<string | null>(null);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => toggleSort(prev, key));
+    setCurrentPage(1);
+  };
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -66,6 +87,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     title: string;
     message: string;
     onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'info' | 'success' | 'champion';
   }>({
     isOpen: false,
     title: '',
@@ -75,6 +97,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
 
   useEffect(() => {
     loadContacts();
+    loadChampionEmails();
   }, []);
 
   useEffect(() => {
@@ -122,7 +145,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
           notes: contact.notes || '',
           linkedin: contact.linkedin || '',
           createdAt: contact.createdAt || '',
-          status: contact.status || 'new',
+          status: contact.status || 'contact',
         };
       });
       setOrganisations(orgsResponse.organisations.map(o => ({ id: o.id, name: o.name })));
@@ -137,6 +160,57 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadChampionEmails = async () => {
+    try {
+      const response = await championApi.getAll();
+      const emails = new Set(response.champions.map((c: any) => c.email));
+      setChampionEmails(emails);
+    } catch (err) {
+      console.error('Error loading champions:', err);
+    }
+  };
+
+  const toggleChampion = (contact: ContactDisplay, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isChampion = championEmails.has(contact.email);
+    setConfirmDialog({
+      isOpen: true,
+      title: isChampion ? 'Remove Champion' : 'Make Champion',
+      message: isChampion
+        ? `Are you sure you want to remove ${contact.name} from the Champions list?`
+        : `Are you sure you want to make ${contact.name} a Champion?`,
+      variant: 'champion',
+      onConfirm: async () => {
+        try {
+          if (isChampion) {
+            await championApi.removeChampion(contact.email);
+            setChampionEmails(prev => {
+              const next = new Set(prev);
+              next.delete(contact.email);
+              return next;
+            });
+            toast.success(`${contact.name} removed from Champions`);
+          } else {
+            await championApi.makeChampion({
+              name: contact.name,
+              email: contact.email,
+              phone: contact.phone || contact.mobile,
+              role: contact.role,
+              organizationName: contact.company,
+              sourceType: 'contact',
+              sourceId: contact.id,
+            });
+            setChampionEmails(prev => new Set(prev).add(contact.email));
+            toast.success(`${contact.name} added as Champion!`);
+          }
+        } catch (err: any) {
+          console.error('Error toggling champion:', err);
+          toast.error(err?.message || 'Failed to update champion status');
+        }
+      },
+    });
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -175,8 +249,9 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
       isPrimary: contact.isPrimary,
       notes: contact.notes,
       linkedin: contact.linkedin,
-      status: contact.status || 'new',
+      status: contact.status || 'contact',
     });
+    setStatusDropdownOpen(false);
     setShowEditModal(true);
   };
 
@@ -236,7 +311,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
         isPrimary: false,
         notes: '',
         linkedin: '',
-        status: 'new',
+        status: 'contact',
       });
     } catch (err) {
       console.error('Error creating contact:', err);
@@ -307,7 +382,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
         notes: updated.notes || '',
         linkedin: updated.linkedIn || '',
         createdAt: updated.createdAt || '',
-        status: updated.status || 'new',
+        status: updated.status || 'contact',
       };
 
       setContacts(prev => prev.map(c => (c.id === editContactId ? updatedDisplay : c)));
@@ -329,10 +404,25 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
     contact.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const sortedContacts = useMemo(() => {
+    return sortData(filteredContacts, sortConfig, (contact, key) => {
+      switch (key) {
+        case 'name': return contact.name || '';
+        case 'email': return contact.email || '';
+        case 'phone': return contact.phone || contact.mobile || '';
+        case 'company': return contact.company || '';
+        case 'role': return contact.role || '';
+        case 'status': return contact.status || '';
+        case 'primary': return contact.isPrimary ? 1 : 0;
+        default: return '';
+      }
+    });
+  }, [filteredContacts, sortConfig]);
+
   // Pagination logic
-  const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedContacts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedContacts = filteredContacts.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedContacts = sortedContacts.slice(startIndex, startIndex + itemsPerPage);
 
   // Table styles
   const thStyle: React.CSSProperties = {
@@ -372,7 +462,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: 0 }}>Contacts</h1>
           <p style={{ color: '#9ca3af', fontSize: '16px', marginTop: '4px' }}>
-            {filteredContacts.length} total contacts
+            {sortedContacts.length} total contacts
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -395,7 +485,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                 isPrimary: false,
                 notes: '',
                 linkedin: '',
-                status: 'new',
+                status: 'contact',
               });
               setShowAddModal(true);
             }}
@@ -449,13 +539,13 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: '#1a2332' }}>
-                  <th style={thStyle}>Name</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Phone</th>
-                  <th style={thStyle}>Company</th>
-                  <th style={thStyle}>Role</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={thStyle}>Primary</th>
+                  <SortableHeader label="Name" sortKey="name" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
+                  <SortableHeader label="Email" sortKey="email" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
+                  <SortableHeader label="Phone" sortKey="phone" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
+                  <SortableHeader label="Company" sortKey="company" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
+                  <SortableHeader label="Role" sortKey="role" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
+                  <SortableHeader label="Status" sortKey="status" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
+                  <SortableHeader label="Primary" sortKey="primary" currentSort={sortConfig} onSort={handleSort} style={{ padding: '16px 12px', whiteSpace: 'nowrap' }} />
                   <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
@@ -509,21 +599,31 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                       <span style={{
                         padding: '4px 10px',
                         backgroundColor: 
-                          contact.status === 'converted' ? 'rgba(139, 92, 246, 0.1)' :
-                          contact.status === 'qualified' ? 'rgba(59, 130, 246, 0.1)' :
-                          contact.status === 'contacted' ? 'rgba(234, 179, 8, 0.1)' :
+                          contact.status === 'client' || contact.status === 'client-expansion' ? 'rgba(16, 185, 129, 0.1)' :
+                          contact.status === 'lead-proposal' ? 'rgba(139, 92, 246, 0.1)' :
+                          contact.status === 'lead' || contact.status === 'lead-qualified' ? 'rgba(59, 130, 246, 0.1)' :
+                          contact.status === 'contact-engaged' ? 'rgba(234, 179, 8, 0.1)' :
+                          contact.status === 'champion' ? 'rgba(245, 158, 11, 0.1)' :
+                          contact.status === 'disqualified' ? 'rgba(239, 68, 68, 0.1)' :
                           'rgba(107, 114, 128, 0.1)',
                         color: 
-                          contact.status === 'converted' ? '#a78bfa' :
-                          contact.status === 'qualified' ? '#3b82f6' :
-                          contact.status === 'contacted' ? '#eab308' :
+                          contact.status === 'client' || contact.status === 'client-expansion' ? '#10b981' :
+                          contact.status === 'lead-proposal' ? '#a78bfa' :
+                          contact.status === 'lead' || contact.status === 'lead-qualified' ? '#3b82f6' :
+                          contact.status === 'contact-engaged' ? '#eab308' :
+                          contact.status === 'champion' ? '#f59e0b' :
+                          contact.status === 'disqualified' ? '#ef4444' :
                           '#9ca3af',
                         borderRadius: '12px',
                         fontSize: '12px',
                         fontWeight: '500',
                         textTransform: 'capitalize',
                       }}>
-                        {contact.status || 'new'}
+                        {contact.status === 'contact-engaged' ? 'Contact Engaged' :
+                         contact.status === 'lead-qualified' ? 'Lead - Qualified' :
+                         contact.status === 'lead-proposal' ? 'Lead - Proposal' :
+                         contact.status === 'client-expansion' ? 'Client Expansion' :
+                         contact.status || 'Contact'}
                       </span>
                     </td>
                     <td style={tdStyle}>
@@ -542,6 +642,18 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                        <button
+                          onClick={(e) => toggleChampion(contact, e)}
+                          title={championEmails.has(contact.email) ? 'Remove Champion' : 'Make Champion'}
+                          style={{
+                            ...buttonStyle,
+                            backgroundColor: championEmails.has(contact.email) ? 'rgba(250, 204, 21, 0.15)' : 'rgba(107, 114, 128, 0.1)',
+                            color: championEmails.has(contact.email) ? '#facc15' : '#6b7280',
+                            padding: '6px 10px',
+                          }}
+                        >
+                          <Star size={14} fill={championEmails.has(contact.email) ? '#facc15' : 'none'} />
+                        </button>
                         <button
                           onClick={() => setSelectedContact(contact)}
                           style={{
@@ -695,21 +807,31 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                   <span style={{
                     padding: '4px 12px',
                     backgroundColor: 
-                      selectedContact.status === 'converted' ? 'rgba(139, 92, 246, 0.2)' :
-                      selectedContact.status === 'qualified' ? 'rgba(59, 130, 246, 0.2)' :
-                      selectedContact.status === 'contacted' ? 'rgba(234, 179, 8, 0.2)' :
+                      selectedContact.status === 'client' || selectedContact.status === 'client-expansion' ? 'rgba(16, 185, 129, 0.2)' :
+                      selectedContact.status === 'lead-proposal' ? 'rgba(139, 92, 246, 0.2)' :
+                      selectedContact.status === 'lead' || selectedContact.status === 'lead-qualified' ? 'rgba(59, 130, 246, 0.2)' :
+                      selectedContact.status === 'contact-engaged' ? 'rgba(234, 179, 8, 0.2)' :
+                      selectedContact.status === 'champion' ? 'rgba(245, 158, 11, 0.2)' :
+                      selectedContact.status === 'disqualified' ? 'rgba(239, 68, 68, 0.2)' :
                       'rgba(107, 114, 128, 0.2)',
                     color: 
-                      selectedContact.status === 'converted' ? '#a78bfa' :
-                      selectedContact.status === 'qualified' ? '#3b82f6' :
-                      selectedContact.status === 'contacted' ? '#eab308' :
+                      selectedContact.status === 'client' || selectedContact.status === 'client-expansion' ? '#10b981' :
+                      selectedContact.status === 'lead-proposal' ? '#a78bfa' :
+                      selectedContact.status === 'lead' || selectedContact.status === 'lead-qualified' ? '#3b82f6' :
+                      selectedContact.status === 'contact-engaged' ? '#eab308' :
+                      selectedContact.status === 'champion' ? '#f59e0b' :
+                      selectedContact.status === 'disqualified' ? '#ef4444' :
                       '#9ca3af',
                     borderRadius: '12px',
                     fontSize: '13px',
                     fontWeight: '500',
                     textTransform: 'capitalize',
                   }}>
-                    {selectedContact.status || 'new'}
+                    {selectedContact.status === 'contact-engaged' ? 'Contact Engaged' :
+                     selectedContact.status === 'lead-qualified' ? 'Lead - Qualified' :
+                     selectedContact.status === 'lead-proposal' ? 'Lead - Proposal' :
+                     selectedContact.status === 'client-expansion' ? 'Client Expansion' :
+                     selectedContact.status || 'Contact'}
                   </span>
                 </div>
               </div>
@@ -908,16 +1030,31 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Status</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
-                  >
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="converted">Converted</option>
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                      style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <span>{FUNNEL_STAGES.find(s => s.value === editForm.status)?.label || 'Select status'}</span>
+                      <span style={{ color: '#6b7280', fontSize: '12px' }}>{statusDropdownOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {statusDropdownOpen && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', marginTop: '4px', maxHeight: '300px', overflowY: 'auto' }}>
+                        {FUNNEL_STAGES.map(stage => (
+                          <div
+                            key={stage.value}
+                            onClick={() => { setEditForm(prev => ({ ...prev, status: stage.value })); setStatusDropdownOpen(false); }}
+                            style={{ padding: '10px 14px', cursor: 'pointer', backgroundColor: editForm.status === stage.value ? '#2a3442' : 'transparent', borderBottom: '1px solid #2a3442' }}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#2a3442')}
+                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = editForm.status === stage.value ? '#2a3442' : 'transparent')}
+                          >
+                            <div style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>{stage.label}</div>
+                            <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>{stage.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>LinkedIn</label>
@@ -1050,8 +1187,8 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Organisation</label>
                   <input
                     type="text"
-                    value={editForm.organisationId}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationId: e.target.value }))}
+                    value={editForm.organisationName}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, organisationName: e.target.value }))}
                     placeholder="Enter organisation name"
                     style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
                   />
@@ -1068,16 +1205,31 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>Status</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                    style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white' }}
-                  >
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="converted">Converted</option>
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                      style={{ width: '100%', padding: '12px', backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <span>{FUNNEL_STAGES.find(s => s.value === editForm.status)?.label || 'Select status'}</span>
+                      <span style={{ color: '#6b7280', fontSize: '12px' }}>{statusDropdownOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {statusDropdownOpen && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, backgroundColor: '#1a2332', border: '1px solid #2a3442', borderRadius: '8px', marginTop: '4px', maxHeight: '300px', overflowY: 'auto' }}>
+                        {FUNNEL_STAGES.map(stage => (
+                          <div
+                            key={stage.value}
+                            onClick={() => { setEditForm(prev => ({ ...prev, status: stage.value })); setStatusDropdownOpen(false); }}
+                            style={{ padding: '10px 14px', cursor: 'pointer', backgroundColor: editForm.status === stage.value ? '#2a3442' : 'transparent', borderBottom: '1px solid #2a3442' }}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#2a3442')}
+                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = editForm.status === stage.value ? '#2a3442' : 'transparent')}
+                          >
+                            <div style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>{stage.label}</div>
+                            <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>{stage.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label style={{ display: 'block', color: '#9ca3af', fontSize: '12px', marginBottom: '6px' }}>LinkedIn</label>
@@ -1135,7 +1287,7 @@ export function ContactsPage({ onNavigate, onSendEmail }: ContactsPageProps = {}
         onConfirm={confirmDialog.onConfirm}
         title={confirmDialog.title}
         message={confirmDialog.message}
-        variant="danger"
+        variant={confirmDialog.variant || 'danger'}
       />
     </div>
   );

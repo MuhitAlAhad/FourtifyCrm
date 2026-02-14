@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Building2, Phone, Mail, MapPin, Eye, Trash2, Users, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { organisationApi, contactApi } from '../../services/api';
 import type { Organisation, Contact } from '../../types/crm-data-model';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { SortableHeader, SortConfig, toggleSort, sortData } from '../ui/SortableHeader';
 
 interface ExtendedContact extends Contact {
   organisationId: string;
@@ -20,6 +21,12 @@ export function OrganisationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => toggleSort(prev, key));
+    setCurrentPage(1);
+  };
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -114,9 +121,22 @@ export function OrganisationsPage() {
     org.abn?.includes(searchQuery)
   );
 
-  const totalPages = Math.ceil(filteredOrgs.length / itemsPerPage);
+  const sortedOrgs = useMemo(() => {
+    return sortData(filteredOrgs, sortConfig, (org, key) => {
+      switch (key) {
+        case 'name': return org.name || '';
+        case 'abn': return org.abn || '';
+        case 'state': return org.state || '';
+        case 'status': return org.status || '';
+        case 'contacts': return getOrgContacts(org.id).length;
+        default: return '';
+      }
+    });
+  }, [filteredOrgs, sortConfig]);
+
+  const totalPages = Math.ceil(sortedOrgs.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedOrgs = filteredOrgs.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedOrgs = sortedOrgs.slice(startIndex, startIndex + itemsPerPage);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -125,7 +145,7 @@ export function OrganisationsPage() {
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: 'white', margin: 0 }}>Organisations</h1>
           <p style={{ fontSize: '16px', color: '#9ca3af', marginTop: '8px' }}>
-            {filteredOrgs.length} organisations • {contacts.length} contacts
+            {sortedOrgs.length} organisations • {contacts.length} contacts
           </p>
         </div>
         <button
@@ -173,11 +193,11 @@ export function OrganisationsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: '#1a2332' }}>
-              <th style={{ padding: '14px 20px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Organisation</th>
-              <th style={{ padding: '14px 20px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>ABN</th>
-              <th style={{ padding: '14px 20px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>State</th>
-              <th style={{ padding: '14px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Status</th>
-              <th style={{ padding: '14px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Contacts</th>
+              <SortableHeader label="Organisation" sortKey="name" currentSort={sortConfig} onSort={handleSort} />
+              <SortableHeader label="ABN" sortKey="abn" currentSort={sortConfig} onSort={handleSort} />
+              <SortableHeader label="State" sortKey="state" currentSort={sortConfig} onSort={handleSort} />
+              <SortableHeader label="Status" sortKey="status" currentSort={sortConfig} onSort={handleSort} align="center" />
+              <SortableHeader label="Contacts" sortKey="contacts" currentSort={sortConfig} onSort={handleSort} align="center" />
               <th style={{ padding: '14px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600', borderBottom: '2px solid #2a3442' }}>Actions</th>
             </tr>
           </thead>

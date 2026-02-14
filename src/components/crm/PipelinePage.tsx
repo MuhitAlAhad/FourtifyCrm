@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, Users, Calendar, Building2, User, Phone, Mail, ChevronRight, AlertCircle } from 'lucide-react';
 import { leadApi, organisationApi, contactApi } from '../../services/api';
+import { SortableHeader, SortConfig, toggleSort, sortData } from '../ui/SortableHeader';
 
 // Pipeline stages as per requirements
 const PIPELINE_STAGES = [
@@ -67,6 +68,11 @@ export function PipelinePage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => toggleSort(prev, key));
+  };
 
   useEffect(() => {
     loadData();
@@ -181,18 +187,39 @@ export function PipelinePage() {
   };
 
 
-  const filteredLeads = leads.filter(lead => {
-    const org = getOrganisation(lead.organisationId);
-    const contact = getContact(lead.contactId);
-    const searchLower = searchQuery.toLowerCase();
+  const filteredLeads = useMemo(() => {
+    const filtered = leads.filter(lead => {
+      const org = getOrganisation(lead.organisationId);
+      const contact = getContact(lead.contactId);
+      const searchLower = searchQuery.toLowerCase();
 
-    return (
-      lead.name?.toLowerCase().includes(searchLower) ||
-      org?.name?.toLowerCase().includes(searchLower) ||
-      contact?.firstName?.toLowerCase().includes(searchLower) ||
-      contact?.lastName?.toLowerCase().includes(searchLower)
-    );
-  });
+      return (
+        lead.name?.toLowerCase().includes(searchLower) ||
+        org?.name?.toLowerCase().includes(searchLower) ||
+        contact?.firstName?.toLowerCase().includes(searchLower) ||
+        contact?.lastName?.toLowerCase().includes(searchLower)
+      );
+    });
+    return sortData(filtered, sortConfig, (lead, key) => {
+      switch (key) {
+        case 'name': return lead.name || '';
+        case 'organisation': return getOrganisation(lead.organisationId)?.name || '';
+        case 'contact': {
+          const c = getContact(lead.contactId);
+          return c ? `${c.firstName} ${c.lastName}` : '';
+        }
+        case 'stage': return PIPELINE_STAGES.indexOf(lead.stage);
+        case 'value': return lead.expectedValue || 0;
+        case 'probability': return lead.probability || 0;
+        case 'owner': return lead.owner || '';
+        case 'priority': {
+          const order: Record<string, number> = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1 };
+          return order[lead.priority || 'Low'] || 0;
+        }
+        default: return '';
+      }
+    });
+  }, [leads, searchQuery, sortConfig, organisations, contacts]);
 
   // Calculate pipeline stats
   const totalValue = leads.reduce((sum, lead) => sum + (lead.expectedValue || 0), 0);
@@ -272,14 +299,14 @@ export function PipelinePage() {
           <table className="w-full">
             <thead className="bg-[#1a2332]">
               <tr>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Lead Name</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Organisation</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Contact</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Stage</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Value</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Probability</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Owner</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Priority</th>
+                <SortableHeader label="Lead Name" sortKey="name" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Organisation" sortKey="organisation" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Contact" sortKey="contact" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Stage" sortKey="stage" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Value" sortKey="value" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Probability" sortKey="probability" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Owner" sortKey="owner" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Priority" sortKey="priority" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1a2332]">

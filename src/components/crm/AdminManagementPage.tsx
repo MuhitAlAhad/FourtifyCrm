@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserCheck, UserX, Shield, ChevronUp, RefreshCw, AlertCircle, Users, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { adminApi, AdminUser } from '../../services/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { SortableHeader, SortConfig, toggleSort, sortData } from '../ui/SortableHeader';
 
 export function AdminManagementPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -13,6 +14,8 @@ export function AdminManagementPage() {
     const [rejectModal, setRejectModal] = useState<{ open: boolean; userId: string; userName: string }>({ open: false, userId: '', userName: '' });
     const [rejectReason, setRejectReason] = useState('');
     const [tab, setTab] = useState<'pending' | 'all'>('pending');
+    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+    const handleSort = (key: string) => setSortConfig(prev => toggleSort(prev, key));
 
     // Confirm dialog state
     const [confirmDialog, setConfirmDialog] = useState<{
@@ -259,24 +262,31 @@ export function AdminManagementPage() {
             <div style={{ backgroundColor: '#0f1623', border: '2px solid #1a2332', borderRadius: '12px', overflow: 'hidden' }}>
                 {loading ? (
                     <div style={{ padding: '48px', textAlign: 'center', color: '#9ca3af' }}>Loading...</div>
-                ) : (tab === 'pending' ? pendingUsers : users).length === 0 ? (
-                    <div style={{ padding: '48px', textAlign: 'center', color: '#9ca3af' }}>
-                        {tab === 'pending' ? 'No pending approvals' : 'No users found'}
-                    </div>
-                ) : (
+                ) : (() => {
+                    const displayData = tab === 'pending' ? pendingUsers : users;
+                    if (displayData.length === 0) return (
+                        <div style={{ padding: '48px', textAlign: 'center', color: '#9ca3af' }}>
+                            {tab === 'pending' ? 'No pending approvals' : 'No users found'}
+                        </div>
+                    );
+                    const sortedUsers = sortData(displayData, sortConfig, (user, key) => {
+                        if (key === 'registered') return new Date(user.createdAt).getTime();
+                        return undefined;
+                    });
+                    return (
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ backgroundColor: '#1a2332' }}>
-                                <th style={{ padding: '14px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600' }}>Name</th>
-                                <th style={{ padding: '14px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600' }}>Email</th>
-                                <th style={{ padding: '14px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600' }}>Role</th>
-                                <th style={{ padding: '14px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600' }}>Status</th>
-                                <th style={{ padding: '14px', textAlign: 'left', color: '#9ca3af', fontSize: '14px', fontWeight: '600' }}>Registered</th>
+                                <SortableHeader label="Name" sortKey="name" sortConfig={sortConfig} onSort={handleSort} />
+                                <SortableHeader label="Email" sortKey="email" sortConfig={sortConfig} onSort={handleSort} />
+                                <SortableHeader label="Role" sortKey="role" sortConfig={sortConfig} onSort={handleSort} />
+                                <SortableHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} />
+                                <SortableHeader label="Registered" sortKey="registered" sortConfig={sortConfig} onSort={handleSort} />
                                 <th style={{ padding: '14px', textAlign: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '600' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {(tab === 'pending' ? pendingUsers : users).map((user) => (
+                            {sortedUsers.map((user) => (
                                 <tr key={user.id} style={{ borderTop: '1px solid #1a2332' }}>
                                     <td style={{ padding: '14px', color: 'white', fontSize: '15px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -341,7 +351,8 @@ export function AdminManagementPage() {
                             ))}
                         </tbody>
                     </table>
-                )}
+                    );
+                })()}
             </div>
 
             {/* Reject Modal */}

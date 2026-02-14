@@ -206,6 +206,7 @@ export interface DashboardStats {
     closedWonValue: number;
     conversionRate: number;
     avgDealSize: number;
+    emailsSent: number;
 }
 
 // Organisation API
@@ -737,6 +738,15 @@ export const championApi = {
             averagePerformanceScore: number;
             topPerformers: Array<{ id: string; name: string; performanceScore: number }>;
         }>('/champions/stats'),
+    makeChampion: (data: { name: string; email?: string; phone?: string; role?: string; organizationName?: string; sourceType: string; sourceId?: string }) =>
+        apiFetch<Champion>('/champions/from-entity', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+    removeChampion: (email: string) =>
+        apiFetch<void>(`/champions/by-email/${encodeURIComponent(email)}`, { method: 'DELETE' }),
+    checkChampion: (email: string) =>
+        apiFetch<{ isChampion: boolean; champion: Champion | null }>(`/champions/check/${encodeURIComponent(email)}`),
 };
 
 export default {

@@ -54,4 +54,5 @@ public class DashboardStats
     public decimal ClosedWonValue { get; set; }
     public double ConversionRate { get; set; }
     public decimal AvgDealSize { get; set; }
+    public int EmailsSent { get; set; }
 }

@@ -16,7 +16,6 @@ public class InvoicesController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IWebHostEnvironment _env;
     private static string? _cachedLogoUrl = null;
 
     public InvoicesController(
@@ -24,15 +23,13 @@ public class InvoicesController : ControllerBase
         ILogger<InvoicesController> logger, 
         IEmailService emailService,
         IConfiguration configuration,
-        IHttpClientFactory httpClientFactory,
-        IWebHostEnvironment env)
+        IHttpClientFactory httpClientFactory)
     {
         _context = context;
         _logger = logger;
         _emailService = emailService;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
-        _env = env;
     }
 
     [HttpGet]
@@ -301,7 +298,7 @@ public class InvoicesController : ControllerBase
         var emailHtml = await GenerateInvoiceEmailHtmlAsync(invoice, primaryContact, invoiceHtml, hostedLogoUrl);
 
         // Generate PDF-specific HTML (white background, black text)
-        var pdfHtml = GenerateInvoicePdfHtml(invoice, primaryContact, hostedLogoUrl);
+        var pdfHtml = GenerateInvoicePdfHtml(invoice, primaryContact);
 
         // Generate PDF from invoice HTML
         byte[] pdfBytes;
@@ -381,67 +378,25 @@ public class InvoicesController : ControllerBase
 
         try
         {
-            // Try to use logo from Supabase storage first (if already uploaded)
-            var supabaseUrl = _configuration["Supabase:Url"];
-            var supabaseKey = _configuration["Supabase:ApiKey"];
-            
-            if (!string.IsNullOrWhiteSpace(supabaseUrl) && !string.IsNullOrWhiteSpace(supabaseKey))
-            {
-                var logoUrl = $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/public/signatures/company-logo.png";
-                
-                // Check if logo exists in Supabase
-                try
-                {
-                    using var client = _httpClientFactory.CreateClient();
-                    var checkResponse = await client.GetAsync(logoUrl);
-                    
-                    if (checkResponse.IsSuccessStatusCode)
-                    {
-                        _cachedLogoUrl = logoUrl;
-                        _logger.LogInformation("Using logo from Supabase: {Url}", logoUrl);
-                        return _cachedLogoUrl;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to check Supabase logo availability");
-                }
-            }
-            
-            // Try to find logo file locally (for development/uploading)
+            // Get logo file path
             var projectDir = Directory.GetCurrentDirectory();
-            DirectoryInfo? currentDir = new DirectoryInfo(projectDir);
-            string? workspaceRoot = null;
-            
-            while (currentDir != null && workspaceRoot == null)
-            {
-                if (currentDir.GetFiles("*.sln").Any())
-                {
-                    workspaceRoot = currentDir.FullName;
-                    break;
-                }
-                currentDir = currentDir.Parent;
-            }
-            
-            if (workspaceRoot == null)
-            {
-                _logger.LogWarning("Could not find workspace root (no .sln file found), logo will not be available");
-                return null;
-            }
-            
-            var logoPath = Path.Combine(workspaceRoot, "src", "assets", "35f931b802bf39733103d00f96fb6f9c21293f6e.png");
+            var apiProjectRoot = projectDir.Contains("bin") 
+                ? Path.GetFullPath(Path.Combine(projectDir, "..", "..", ".."))
+                : projectDir;
+            var workspaceRoot = Path.GetFullPath(Path.Combine(apiProjectRoot, "..", "..", ".."));
+            var logoPath = Path.Combine(workspaceRoot, "4D_Frontend_CRM", "src", "assets", "35f931b802bf39733103d00f96fb6f9c21293f6e.png");
             
             if (!System.IO.File.Exists(logoPath))
             {
-                _logger.LogWarning("Logo file not found at: {LogoPath}, logo will not be available", logoPath);
+                _logger.LogWarning("Logo file not found at: {LogoPath}", logoPath);
                 return null;
             }
 
             var logoBytes = await System.IO.File.ReadAllBytesAsync(logoPath);
             
-            // Upload to Supabase storage (reuse variables declared earlier)
-            supabaseUrl = _configuration["Supabase:Url"];
-            supabaseKey = _configuration["Supabase:ApiKey"];
+            // Upload to Supabase storage
+            var supabaseUrl = _configuration["Supabase:Url"];
+            var supabaseKey = _configuration["Supabase:ApiKey"];
 
             if (!string.IsNullOrWhiteSpace(supabaseUrl) && !string.IsNullOrWhiteSpace(supabaseKey))
             {
@@ -505,63 +460,66 @@ public class InvoicesController : ControllerBase
     {
         try
         {
-            // Prefer a logo placed in the app's wwwroot (will be included in publish)
-            var logoPath = Path.Combine(_env.ContentRootPath, "wwwroot", "signatures", "company-logo.png");
+            // Navigate from CRM.API project to workspace root
+            // Current: 4D_Backend_CRM/Backend/CRM.API
+            // Target: 4D_CRM root (up 3 levels from project)
+            var projectDir = Directory.GetCurrentDirectory();
+            
+            // Go up from bin/Debug/net8.0 or project root to CRM.API
+            var apiProjectRoot = projectDir.Contains("bin") 
+                ? Path.GetFullPath(Path.Combine(projectDir, "..", "..", ".."))
+                : projectDir;
+            
+            // Go up 3 levels to workspace root (4D_CRM)
+            var workspaceRoot = Path.GetFullPath(Path.Combine(apiProjectRoot, "..", "..", ".."));
+            var logoPath = Path.Combine(workspaceRoot, "4D_Frontend_CRM", "src", "assets", "35f931b802bf39733103d00f96fb6f9c21293f6e.png");
+            
+            _logger.LogInformation("Current dir: {CurrentDir}", projectDir);
+            _logger.LogInformation("API Project root: {ApiRoot}", apiProjectRoot);
+            _logger.LogInformation("Workspace root: {WorkspaceRoot}", workspaceRoot);
             _logger.LogInformation("Looking for logo at: {LogoPath}", logoPath);
-
+            
             if (System.IO.File.Exists(logoPath))
             {
                 var imageBytes = System.IO.File.ReadAllBytes(logoPath);
-                _logger.LogInformation("Logo loaded successfully from wwwroot, size: {Size} bytes", imageBytes.Length);
+                _logger.LogInformation("Logo loaded successfully, size: {Size} bytes", imageBytes.Length);
                 return Convert.ToBase64String(imageBytes);
             }
-
-            _logger.LogWarning("Logo file not found in wwwroot at: {LogoPath}", logoPath);
+            
+            _logger.LogWarning("Logo file not found at: {LogoPath}", logoPath);
             return string.Empty;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading logo file from wwwroot");
+            _logger.LogError(ex, "Error reading logo file");
             return string.Empty;
         }
     }
 
     private async Task<byte[]> GenerateInvoicePdfAsync(string html)
     {
-        try
+        // Download Chromium browser if not already downloaded
+        var browserFetcher = new BrowserFetcher();
+        await browserFetcher.DownloadAsync();
+
+        // Launch browser and create PDF
+        await using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
         {
-            // Download Chromium browser if not already downloaded
-            var browserFetcher = new BrowserFetcher();
-            
-            _logger.LogInformation("Checking for Chromium installation...");
-            await browserFetcher.DownloadAsync();
-            _logger.LogInformation("Chromium ready");
+            Headless = true,
+            Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" }
+        });
 
-            // Launch browser and create PDF
-            await using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
-            {
-                Headless = true,
-                Args = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage" }
-            });
+        await using var page = await browser.NewPageAsync();
+        await page.SetContentAsync(html);
 
-            await using var page = await browser.NewPageAsync();
-            await page.SetContentAsync(html);
-
-            // Generate PDF with proper formatting
-            var pdfData = await page.PdfDataAsync(new PdfOptions
-            {
-                Format = PuppeteerSharp.Media.PaperFormat.A4,
-                PrintBackground = true
-            });
-
-            _logger.LogInformation("PDF generated successfully, size: {Size} bytes", pdfData.Length);
-            return pdfData;
-        }
-        catch (Exception ex)
+        // Generate PDF with proper formatting
+        var pdfData = await page.PdfDataAsync(new PdfOptions
         {
-            _logger.LogError(ex, "Failed to generate PDF using PuppeteerSharp");
-            throw; // Re-throw to be handled by caller
-        }
+            Format = PuppeteerSharp.Media.PaperFormat.A4,
+            PrintBackground = true
+        });
+
+        return pdfData;
     }
 
     private string GenerateInvoiceHtml(Invoice invoice, Contact contact)
@@ -667,7 +625,7 @@ public class InvoicesController : ControllerBase
         </div>";
     }
 
-    private string GenerateInvoicePdfHtml(Invoice invoice, Contact contact, string? hostedLogoUrl = null)
+    private string GenerateInvoicePdfHtml(Invoice invoice, Contact contact)
     {
         var lineItemsHtml = string.Join("", invoice.LineItems?.OrderBy(li => li.SortOrder).Select((li, index) => 
             $@"<tr style='border-bottom: 1px solid #e2e8f0;'>
@@ -677,23 +635,10 @@ public class InvoicesController : ControllerBase
             </tr>") ?? Enumerable.Empty<string>());
 
         var taxPercentage = invoice.Amount > 0 ? (invoice.Tax / invoice.Amount * 100) : 0;
-        // Prefer hosted logo URL (e.g., Supabase public URL) so Puppeteer can fetch it
-        string? logoBase64 = GetLogoBase64();
-        string logoHtml;
-        if (!string.IsNullOrEmpty(hostedLogoUrl))
-        {
-            // Use hosted URL
-            logoHtml = $"<img src='{hostedLogoUrl}' style='max-width: 160px; height: auto;' alt='Company Logo' />";
-        }
-        else if (!string.IsNullOrEmpty(logoBase64))
-        {
-            // Fallback to embedded base64
-            logoHtml = $"<img src='data:image/png;base64,{logoBase64}' style='max-width: 160px; height: auto;' alt='Company Logo' />";
-        }
-        else
-        {
-            logoHtml = "<div style='background-color: #f1f5f9; padding: 16px; border-radius: 8px; color: #059669; font-size: 18px; font-weight: bold; border: 2px solid #e2e8f0;'>4D LOGO</div>";
-        }
+        var logoBase64 = GetLogoBase64();
+        var logoHtml = !string.IsNullOrEmpty(logoBase64) 
+            ? $"<img src='data:image/png;base64,{logoBase64}' style='max-width: 160px; height: auto;' alt='Company Logo' />"
+            : "<div style='background-color: #f1f5f9; padding: 16px; border-radius: 8px; color: #059669; font-size: 18px; font-weight: bold; border: 2px solid #e2e8f0;'>4D LOGO</div>";
 
         return $@"
         <!DOCTYPE html>

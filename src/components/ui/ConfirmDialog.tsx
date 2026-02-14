@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Trash2, CheckCircle, Info } from 'lucide-react';
+import { AlertCircle, Trash2, CheckCircle, Info, Star } from 'lucide-react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -10,7 +10,7 @@ interface ConfirmDialogProps {
   message: string | React.ReactNode;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'danger' | 'warning' | 'info' | 'success';
+  variant?: 'danger' | 'warning' | 'info' | 'success' | 'champion';
 }
 
 export function ConfirmDialog({
@@ -55,6 +55,13 @@ export function ConfirmDialog({
       iconBg: 'rgba(0, 255, 136, 0.1)',
       buttonBg: '#00ff88',
       buttonHoverBg: '#00cc6a'
+    },
+    champion: {
+      icon: Star,
+      iconColor: '#facc15',
+      iconBg: 'rgba(250, 204, 21, 0.15)',
+      buttonBg: '#facc15',
+      buttonHoverBg: '#eab308'
     }
   };
 
@@ -184,7 +191,7 @@ export function ConfirmDialog({
             style={{
               padding: '12px 24px',
               backgroundColor: style.buttonBg,
-              color: variant === 'success' ? '#0a0f1a' : 'white',
+              color: variant === 'success' || variant === 'champion' ? '#0a0f1a' : 'white',
               border: 'none',
               borderRadius: '8px',
               fontSize: '16px',

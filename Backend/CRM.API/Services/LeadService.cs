@@ -25,13 +25,6 @@ public class LeadService : ILeadService
         return await query
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
-
-        
-      //  return await query
-        //    .Include(l => l.Organisation)
-         //   .Include(l => l.Contact)
-         //   .OrderByDescending(l => l.CreatedAt)
-         //   .ToListAsync();
     }
 
     public async Task<Lead?> GetByIdAsync(string id)

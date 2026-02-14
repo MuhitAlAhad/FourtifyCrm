@@ -72,7 +72,8 @@ public class StatsService : IStatsService
             PipelineValue = activeLeads.Sum(l => l.ExpectedValue),
             ClosedWonValue = closedWonLeads.Sum(l => l.ExpectedValue),
             ConversionRate = totalClosed > 0 ? Math.Round((double)closedWonCount / totalClosed * 100, 1) : 0,
-            AvgDealSize = closedWonCount > 0 ? closedWonLeads.Sum(l => l.ExpectedValue) / closedWonCount : 0
+            AvgDealSize = closedWonCount > 0 ? closedWonLeads.Sum(l => l.ExpectedValue) / closedWonCount : 0,
+            EmailsSent = await _context.SentEmails.CountAsync(e => e.Status == "sent")
         };
     }
 }

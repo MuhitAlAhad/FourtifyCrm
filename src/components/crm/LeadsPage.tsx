@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Mail, Phone, Calendar, Trash2, Edit, Upload, FileSpreadsheet, AlertCircle } from 'lucide-react';
-import { leadApi, contactApi, organisationApi } from '../../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Search, Filter, Mail, Phone, Calendar, Trash2, Edit, Upload, FileSpreadsheet, AlertCircle, Star } from 'lucide-react';
+import { leadApi, contactApi, organisationApi, championApi } from '../../services/api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { SortableHeader, SortConfig, toggleSort, sortData } from '../ui/SortableHeader';
 
 interface Lead {
   id: string;
@@ -10,13 +11,19 @@ interface Lead {
   company: string;
   email: string;
   phone: string;
-  status: 'new' | 'contacted' | 'qualified' | 'converted';
+  status: 'lead' | 'lead-qualified' | 'lead-proposal';
   source: string;
   supplierName: string;
   createdAt: string;
   lastContact?: string;
   sourceType?: 'lead' | 'contact';
 }
+
+const LEAD_STATUS_LABELS: Record<string, string> = {
+  'lead': 'Lead',
+  'lead-qualified': 'Lead - Qualified',
+  'lead-proposal': 'Lead - Proposal',
+};
 
 export function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -27,6 +34,12 @@ export function LeadsPage() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => toggleSort(prev, key));
+  };
+  const [championEmails, setChampionEmails] = useState<Set<string>>(new Set());
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -34,6 +47,7 @@ export function LeadsPage() {
     title: string;
     message: string;
     onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'info' | 'success' | 'champion';
   }>({
     isOpen: false,
     title: '',
@@ -43,6 +57,7 @@ export function LeadsPage() {
 
   useEffect(() => {
     loadLeads();
+    loadChampionEmails();
   }, []);
 
   const loadLeads = async () => {
@@ -61,18 +76,18 @@ export function LeadsPage() {
       const apiContacts = contactsResponse.contacts || [];
       const apiOrgs = orgsResponse.organisations || [];
       
-      // Filter contacts to only include contacted and qualified statuses
+      // Filter contacts to only include lead statuses
       const contactLeads = apiContacts
-        .filter((contact: any) => contact.status === 'contacted' || contact.status === 'qualified')
+        .filter((contact: any) => contact.status === 'lead' || contact.status === 'lead-qualified' || contact.status === 'lead-proposal')
         .map((contact: any) => {
           const org = apiOrgs.find((o: any) => o.id === contact.organisationId);
           return {
             id: contact.id,
             name: `${contact.firstName} ${contact.lastName}`,
             company: org?.name || 'N/A',
-            email: contact.email || 'no-email@example.com',
-            phone: contact.phone || contact.mobile || '+61 000 000 000',
-            status: contact.status, // 'contacted' or 'qualified'
+            email: contact.email || '',
+            phone: contact.phone || contact.mobile || '',
+            status: contact.status, // 'lead', 'lead-qualified', or 'lead-proposal'
             source: 'Contact Form',
             supplierName: '',
             createdAt: contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
@@ -82,19 +97,16 @@ export function LeadsPage() {
       
       const formattedLeads: Lead[] = apiLeads.map(lead => {
         const org = apiOrgs.find((o: any) => o.id === lead.organisationId);
+        const contact = apiContacts.find((c: any) => c.id === lead.contactId);
         return {
           id: lead.id ?? lead.leadId ?? `lead-${Math.random()}`,
           name: lead.name ?? 'Unnamed Lead',
           company: org?.name ?? lead.organisationName ?? 'N/A',
-          email: lead.email ?? (
-            lead.name
-              ? `${lead.name.toLowerCase().replace(/\s+/g, '')}@example.com`
-              : 'no-email@example.com'
-          ),
-          phone: lead.phone ?? '+61 000 000 000',
-          status: mapStageToStatus(lead.stage ?? 'new'),
+          email: org?.email || contact?.email || '',
+          phone: org?.phone || contact?.phone || contact?.mobile || '',
+          status: mapStageToStatus(lead.stage ?? 'lead'),
           source: lead.source ?? '',
-          supplierName: lead.supplierName ?? lead.owner ?? '',
+          supplierName: org?.supplierName ?? lead.owner ?? '',
           createdAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
           sourceType: 'lead',
         };
@@ -117,27 +129,84 @@ export function LeadsPage() {
   };
 
   const mapStageToStatus = (stage: string): Lead['status'] => {
-    if (stage.includes('New')) return 'new';
-    if (stage.includes('Qualified')) return 'qualified';
-    if (stage.includes('Won')) return 'converted';
-    return 'contacted';
+    if (stage.includes('Qualified')) return 'lead-qualified';
+    if (stage.includes('Proposal') || stage.includes('Won')) return 'lead-proposal';
+    return 'lead';
+  };
+
+  const loadChampionEmails = async () => {
+    try {
+      const response = await championApi.getAll();
+      const emails = new Set(response.champions.map((c: any) => c.email));
+      setChampionEmails(emails);
+    } catch (err) {
+      console.error('Error loading champions:', err);
+    }
+  };
+
+  const toggleChampion = (lead: Lead, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isChampion = championEmails.has(lead.email);
+    setConfirmDialog({
+      isOpen: true,
+      title: isChampion ? 'Remove Champion' : 'Make Champion',
+      message: isChampion
+        ? `Are you sure you want to remove ${lead.name} from the Champions list?`
+        : `Are you sure you want to make ${lead.name} a Champion?`,
+      variant: 'champion',
+      onConfirm: async () => {
+        try {
+          if (isChampion) {
+            await championApi.removeChampion(lead.email);
+            setChampionEmails(prev => {
+              const next = new Set(prev);
+              next.delete(lead.email);
+              return next;
+            });
+            toast.success(`${lead.name} removed from Champions`);
+          } else {
+            await championApi.makeChampion({
+              name: lead.name,
+              email: lead.email,
+              phone: lead.phone,
+              organizationName: lead.company,
+              sourceType: 'lead',
+              sourceId: lead.id,
+            });
+            setChampionEmails(prev => new Set(prev).add(lead.email));
+            toast.success(`${lead.name} added as Champion!`);
+          }
+        } catch (err: any) {
+          console.error('Error toggling champion:', err);
+          toast.error(err?.message || 'Failed to update champion status');
+        }
+      },
+    });
   };
 
   const mapStatusToStage = (status: Lead['status']): string => {
-    if (status === 'new') return 'New Lead';
-    if (status === 'qualified') return 'Qualified Lead';
-    if (status === 'converted') return 'Closed Won';
-    return 'Contacted Lead';
+    if (status === 'lead-qualified') return 'Qualified Lead';
+    if (status === 'lead-proposal') return 'Lead - Proposal';
+    return 'New Lead';
   };
 
   const addLead = async (leadData: Partial<Lead>) => {
     const loadingToast = toast.loading('Creating lead...');
     try {
+      // First create an organisation for this lead
+      const orgResponse = await organisationApi.create({
+        name: leadData.company || '',
+        email: leadData.email || '',
+        phone: leadData.phone || '',
+        supplierName: leadData.supplierName || '',
+      });
+
       await leadApi.create({
         name: leadData.name || '',
         source: leadData.source || '',
         owner: leadData.supplierName || '',
         stage: 'New Lead',
+        organisationId: orgResponse.id,
       });
          
       toast.success('Lead created successfully', { id: loadingToast });
@@ -209,22 +278,35 @@ export function LeadsPage() {
   };
 
   const getStatusColor = (status: string) => {
-    const colors = {
-      new: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      contacted: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-      qualified: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-      converted: 'bg-[#00ff88]/10 text-[#00ff88] border-[#00ff88]/20',
+    const colors: Record<string, string> = {
+      'lead': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      'lead-qualified': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+      'lead-proposal': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
     };
-    return colors[status as keyof typeof colors] || colors.new;
+    return colors[status] || colors['lead'];
   };
 
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || lead.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  const filteredLeads = useMemo(() => {
+    const filtered = leads.filter(lead => {
+      const matchesSearch = lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.email.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = filterStatus === 'all' || lead.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    });
+    return sortData(filtered, sortConfig, (lead, key) => {
+      switch (key) {
+        case 'name': return lead.name || '';
+        case 'company': return lead.company || '';
+        case 'supplierName': return lead.supplierName || '';
+        case 'email': return lead.email || '';
+        case 'status': return lead.status || '';
+        case 'source': return lead.source || '';
+        case 'createdAt': return lead.createdAt ? new Date(lead.createdAt).getTime() : 0;
+        default: return '';
+      }
+    });
+  }, [leads, searchQuery, filterStatus, sortConfig]);
 
   return (
     <div className="p-8 space-y-6">
@@ -270,10 +352,9 @@ export function LeadsPage() {
           className="bg-[#0f1623] border border-[#1a2332] rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#00ff88]"
         >
           <option value="all">All Status</option>
-          <option value="new">New</option>
-          <option value="contacted">Contacted</option>
-          <option value="qualified">Qualified</option>
-          <option value="converted">Converted</option>
+          <option value="lead">Lead</option>
+          <option value="lead-qualified">Lead - Qualified</option>
+          <option value="lead-proposal">Lead - Proposal</option>
         </select>
       </div>
 
@@ -283,13 +364,13 @@ export function LeadsPage() {
           <table className="w-full">
             <thead className="bg-[#1a2332]">
               <tr>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Name</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Company</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Supplier Name</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Contact</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Status</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Source</th>
-                <th className="px-6 py-4 text-left text-sm text-gray-400">Created</th>
+                <SortableHeader label="Name" sortKey="name" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Company" sortKey="company" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Supplier Name" sortKey="supplierName" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Contact" sortKey="email" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Status" sortKey="status" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Source" sortKey="source" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
+                <SortableHeader label="Created" sortKey="createdAt" currentSort={sortConfig} onSort={handleSort} variant="tailwind" />
                 <th className="px-6 py-4 text-left text-sm text-gray-400">Actions</th>
               </tr>
             </thead>
@@ -318,23 +399,34 @@ export function LeadsPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm text-gray-400">
                           <Mail className="w-4 h-4" />
-                          {lead.email}
+                          {lead.email || '-'}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-400">
                           <Phone className="w-4 h-4" />
-                          {lead.phone}
+                          {lead.phone || '-'}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-lg text-sm border ${getStatusColor(lead.status)}`}>
-                        {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+                        {LEAD_STATUS_LABELS[lead.status] || lead.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-400">{lead.source}</td>
                     <td className="px-6 py-4 text-gray-400">{lead.createdAt}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => toggleChampion(lead, e)}
+                          title={championEmails.has(lead.email) ? 'Remove Champion' : 'Make Champion'}
+                          className="p-2 transition-colors"
+                          style={{
+                            color: championEmails.has(lead.email) ? '#facc15' : '#6b7280',
+                          }}
+                        >
+                          <Star className="w-4 h-4" fill={championEmails.has(lead.email) ? '#facc15' : 'none'} />
+                        </button>
                         <button 
                           type="button"
                           onClick={() => handleEdit(lead)}
@@ -412,7 +504,7 @@ export function LeadsPage() {
         onConfirm={confirmDialog.onConfirm}
         title={confirmDialog.title}
         message={confirmDialog.message}
-        variant="danger"
+        variant={confirmDialog.variant || 'danger'}
       />
     </div>
   );
@@ -438,7 +530,7 @@ function LeadModal({
     company: initialData?.company || '',
     email: initialData?.email || '',
     phone: initialData?.phone || '',
-    status: (initialData?.status || 'new') as Lead['status'],
+    status: (initialData?.status || 'lead') as Lead['status'],
     source: initialData?.source || '',
     supplierName: initialData?.supplierName || '',
   });
@@ -450,7 +542,7 @@ function LeadModal({
       company: initialData.company || '',
       email: initialData.email || '',
       phone: initialData.phone || '',
-      status: (initialData.status || 'new') as Lead['status'],
+      status: (initialData.status || 'lead') as Lead['status'],
       source: initialData.source || '',
       supplierName: initialData.supplierName || '',
     });
@@ -474,7 +566,7 @@ function LeadModal({
         <h2 className="text-2xl text-white mb-6">{title}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Name</label>
+            <label className="block text-sm text-gray-400 mb-2">Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={formData.name}
@@ -484,7 +576,7 @@ function LeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Company</label>
+            <label className="block text-sm text-gray-400 mb-2">Company <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={formData.company}
@@ -494,7 +586,7 @@ function LeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Email</label>
+            <label className="block text-sm text-gray-400 mb-2">Email <span className="text-red-500">*</span></label>
             <input
               type="email"
               value={formData.email}
@@ -504,7 +596,7 @@ function LeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Phone</label>
+            <label className="block text-sm text-gray-400 mb-2">Phone <span className="text-red-500">*</span></label>
             <input
               type="tel"
               value={formData.phone}
@@ -514,7 +606,7 @@ function LeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Source</label>
+            <label className="block text-sm text-gray-400 mb-2">Source <span className="text-red-500">*</span></label>
             <select
               value={formData.source}
               onChange={(e) => setFormData({ ...formData, source: e.target.value })}
@@ -530,12 +622,13 @@ function LeadModal({
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Supplier Name</label>
+            <label className="block text-sm text-gray-400 mb-2">Supplier Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={formData.supplierName}
               onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
               className="w-full bg-[#1a2332] border border-[#2a3442] rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#00ff88]"
+              required
             />
           </div>
           <div className="flex gap-3 pt-4">
@@ -600,7 +693,7 @@ function BulkImportModal({ onClose, onImport }: BulkImportModalProps) {
             email: email,
             phone: parts[3]?.trim() || '',
             supplierName: parts[4]?.trim() || '',
-            status: (parts[5]?.trim().toLowerCase() as Lead['status']) || 'new',
+            status: (parts[5]?.trim().toLowerCase() as Lead['status']) || 'lead',
             source: parts[6]?.trim() || 'Bulk Import',
             id: `lead-${Date.now()}-${Math.random()}`,
             createdAt: new Date().toLocaleDateString(),
